@@ -1,0 +1,1 @@
+CREATE INDEX "anonymous_documents_session_created_idx" ON "anonymous_documents" USING btree ("session_id","created_at" DESC NULLS LAST);
