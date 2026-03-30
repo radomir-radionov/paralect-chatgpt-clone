@@ -52,6 +52,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   const selectedChatId = chatId ?? routingChatId;
+  const isGuestResolved = !authLoading && !user;
 
   const quotaQuery = useQuery({
     queryKey: ["guest-quota"],
@@ -59,7 +60,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
       apiJson<{ used: number; remaining: number; limit: number }>(
         "/api/guest/quota",
       ),
-    enabled: !user,
+    enabled: isGuestResolved,
   });
 
   const chatsQuery = useQuery({

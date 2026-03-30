@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
 import { requireUser } from "@/server/auth/session";
@@ -52,6 +52,7 @@ export async function POST(
       : null;
 
     await db.insert(messages).values({
+      id: body.userMessageId,
       chatId,
       role: "user",
       content: body.content,
@@ -60,7 +61,7 @@ export async function POST(
 
     const msgRows = await db.query.messages.findMany({
       where: eq(messages.chatId, chatId),
-      orderBy: (m, { asc }) => [asc(m.createdAt)],
+      orderBy: [asc(messages.createdAt), asc(messages.id)],
       limit: 80,
     });
 
@@ -85,6 +86,7 @@ export async function POST(
     return sseResponse(stream, async (fullText) => {
       const dbComplete = getDb();
       await dbComplete.insert(messages).values({
+        id: body.assistantMessageId,
         chatId,
         role: "assistant",
         content: fullText,

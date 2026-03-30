@@ -54,9 +54,19 @@ export async function uploadLibraryDocument(
   return res.json() as Promise<{ document: { id: string } }>;
 }
 
+type SseEvent =
+  | { type: "token"; text: string }
+  | { type: "done" }
+  | { type: "error"; message?: string };
+
+type ParseSseStreamOptions = {
+  onToken?: (chunk: string) => void;
+  onDone?: () => void;
+};
+
 export async function parseSseStream(
   response: Response,
-  onToken: (chunk: string) => void,
+  options: ParseSseStreamOptions,
 ): Promise<void> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("No response body");
@@ -72,13 +82,12 @@ export async function parseSseStream(
       const line = part.trim();
       if (!line.startsWith("data:")) continue;
       const json = line.slice(5).trim();
-      const data = JSON.parse(json) as {
-        type?: string;
-        text?: string;
-        message?: string;
-      };
-      if (data.type === "token" && data.text) {
-        onToken(data.text);
+      const data = JSON.parse(json) as SseEvent;
+      if (data.type === "token") {
+        options.onToken?.(data.text);
+      }
+      if (data.type === "done") {
+        options.onDone?.();
       }
       if (data.type === "error") {
         throw new Error(data.message ?? "Stream error");

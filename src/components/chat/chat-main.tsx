@@ -9,119 +9,51 @@ import {
 import { ImageIcon, Loader2, Paperclip, Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AssistantMarkdown } from "@/components/chat/assistant-markdown";
+import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { toThreadMessage, type ChatThreadMessage } from "@/components/chat/chat-thread.types";
+import { useChatThreadState } from "@/components/chat/use-chat-thread-state";
 import { useChatLayout } from "@/components/chat/chat-layout-context";
 import { useChatShell } from "@/components/chat/chat-shell";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiJson, parseSseStream } from "@/lib/api-client";
+import { primeNewChatDetailCache, upsertChatInListCache } from "@/lib/chats-cache";
 import {
   fetchChatDetailPage,
-  type ChatMessageAttachment,
   type ChatSummary,
 } from "@/lib/chat-api";
-import {
-  appendOptimisticUserMessage,
-  upsertChatInListCache,
-} from "@/lib/chats-cache";
-import { cn } from "@/lib/utils";
 
 type ChatRow = ChatSummary;
 
-function parseRowAttachments(
-  raw: unknown,
-): ChatMessageAttachment[] | undefined {
-  if (!raw || !Array.isArray(raw)) return undefined;
-  const out: ChatMessageAttachment[] = [];
-  for (const item of raw) {
-    if (
-      item &&
-      typeof item === "object" &&
-      "mimeType" in item &&
-      "base64" in item &&
-      typeof (item as ChatMessageAttachment).mimeType === "string" &&
-      typeof (item as ChatMessageAttachment).base64 === "string"
-    ) {
-      out.push(item as ChatMessageAttachment);
-    }
-  }
-  return out.length ? out : undefined;
+function getChatKey(userId: string | undefined, chatId: string | undefined) {
+  return userId ? `auth:${chatId ?? "draft"}` : "guest:default";
 }
 
-type UiMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  attachments?: ChatMessageAttachment[];
-};
-
-type MessageBubbleProps = {
-  m: UiMessage;
-};
-
-function MessageBubble({ m }: MessageBubbleProps) {
-  return (
-    <div
-      className={cn(
-        "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm",
-        m.role === "user"
-          ? "bg-primary text-primary-foreground"
-          : "bg-muted text-foreground",
-      )}
-    >
-      {m.attachments && m.attachments.length > 0 && (
-        <div
-          className={cn(
-            "mb-2 flex flex-col gap-2",
-            m.content ? "" : "mb-0",
-          )}
-        >
-          {m.attachments.map((a, i) => (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              key={`${m.id}-att-${i}`}
-              src={`data:${a.mimeType};base64,${a.base64}`}
-              alt=""
-              className="max-h-64 max-w-full rounded-md object-contain"
-            />
-          ))}
-        </div>
-      )}
-      {m.content ? (
-        m.role === "assistant" ? (
-          <AssistantMarkdown content={m.content} />
-        ) : (
-          m.content
-        )
-      ) : m.role === "assistant" ? (
-        <span className="text-muted-foreground" aria-busy="true">
-          …
-        </span>
-      ) : null}
-    </div>
-  );
+function toGuestRequestMessage(message: ChatThreadMessage) {
+  return {
+    role: message.role,
+    content: message.content,
+    images:
+      message.role === "user" && message.attachments?.length
+        ? message.attachments.map((attachment) => ({
+            mimeType: attachment.mimeType,
+            base64: attachment.base64,
+          }))
+        : undefined,
+  };
 }
 
 export function ChatMain() {
   const params = useParams<{ chatId?: string }>();
   const chatId = typeof params.chatId === "string" ? params.chatId : undefined;
-  const {
-    user,
-    authLoading,
-    routingChatId,
-    setRoutingChatId,
-  } = useChatLayout();
+  const { user, authLoading, routingChatId, setRoutingChatId } = useChatLayout();
   const { isCreatingChat } = useChatShell();
   const effectiveChatId = chatId ?? routingChatId;
   const router = useRouter();
   const queryClient = useQueryClient();
+  const isGuestResolved = !authLoading && !user;
   const [modelId, setModelId] = useState<string>("");
-  const [guestMessages, setGuestMessages] = useState<UiMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [authStreamText, setAuthStreamText] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<
     { mimeType: string; base64: string; preview: string }[]
   >([]);
@@ -129,6 +61,7 @@ export function ChatMain() {
   const [sendError, setSendError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const sendLockRef = useRef(false);
 
   const modelsQuery = useQuery({
     queryKey: ["models"],
@@ -158,7 +91,7 @@ export function ChatMain() {
       apiJson<{ used: number; remaining: number; limit: number }>(
         "/api/guest/quota",
       ),
-    enabled: !user,
+    enabled: isGuestResolved,
   });
 
   const chatDetailQuery = useInfiniteQuery({
@@ -191,45 +124,81 @@ export function ChatMain() {
       apiJson<{ documents: { id: string; filename: string }[] }>(
         "/api/guest/documents",
       ),
-    enabled: !user,
+    enabled: isGuestResolved,
   });
 
   const contextLibraryDocs = user
     ? documentsQuery.data?.documents
-    : guestDocumentsQuery.data?.documents;
+    : isGuestResolved
+      ? guestDocumentsQuery.data?.documents
+      : undefined;
 
-  const messages: UiMessage[] = useMemo(() => {
-    if (!user) return guestMessages;
+  const serverMessages = useMemo(() => {
+    if (!user) return [];
     const pages = chatDetailQuery.data?.pages;
     if (!pages?.length) return [];
-    const chronological = [...pages].reverse().flatMap((p) => p.messages);
-    return chronological.map((m) => ({
-      id: m.id,
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.content,
-      attachments: parseRowAttachments(m.attachments),
-    }));
-  }, [user, guestMessages, chatDetailQuery.data]);
+    return [...pages]
+      .reverse()
+      .flatMap((page) =>
+        page.messages.map((message) =>
+          toThreadMessage({
+            ...message,
+            attachments: message.attachments ?? undefined,
+          }),
+        ),
+      );
+  }, [chatDetailQuery.data?.pages, user]);
 
-  const displayMessages: UiMessage[] = useMemo(() => {
-    if (authStreamText === null) return messages;
-    const streamT = authStreamText.trim();
-    const last = messages[messages.length - 1];
-    if (
-      last?.role === "assistant" &&
-      last.content.trim() === streamT
-    ) {
-      return messages;
-    }
-    return [
-      ...messages,
-      {
-        id: "__stream__",
-        role: "assistant" as const,
-        content: authStreamText,
-      },
-    ];
-  }, [messages, authStreamText]);
+  const chatKey = getChatKey(user?.id, effectiveChatId);
+  const {
+    messages,
+    status,
+    hasPendingSync,
+    startSend,
+    appendAssistantChunk,
+    completeAssistant,
+    failAssistant,
+  } = useChatThreadState({
+    chatKey,
+    mode: user ? "auth" : "guest",
+    serverMessages,
+    hydrateFromServer: !!user && !!effectiveChatId && !!chatDetailQuery.data,
+  });
+
+  useEffect(() => {
+    if (!user || !effectiveChatId || !hasPendingSync) return;
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const syncThread = async () => {
+      if (cancelled || attempts >= 5) return;
+      attempts += 1;
+      try {
+        await queryClient.fetchInfiniteQuery({
+          queryKey: ["chat", effectiveChatId],
+          initialPageParam: undefined as string | undefined,
+          queryFn: ({ pageParam }) =>
+            fetchChatDetailPage(
+              effectiveChatId,
+              pageParam ? { before: pageParam } : {},
+            ),
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    void syncThread();
+    const intervalId = window.setInterval(() => {
+      void syncThread();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [effectiveChatId, hasPendingSync, queryClient, user]);
 
   const uploadDocMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -247,10 +216,10 @@ export function ChatMain() {
         const text = await res.text();
         let message = text;
         try {
-          const j = JSON.parse(text) as { error?: unknown };
-          if (typeof j.error === "string") message = j.error;
+          const json = JSON.parse(text) as { error?: unknown };
+          if (typeof json.error === "string") message = json.error;
         } catch {
-          /* keep text */
+          /* keep response text */
         }
         throw new Error(message || `HTTP ${res.status}`);
       }
@@ -259,8 +228,8 @@ export function ChatMain() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["documents"] });
     },
-    onError: (e) => {
-      setSendError(e instanceof Error ? e.message : "Upload failed");
+    onError: (error) => {
+      setSendError(error instanceof Error ? error.message : "Upload failed");
     },
   });
 
@@ -277,10 +246,10 @@ export function ChatMain() {
         const text = await res.text();
         let message = text;
         try {
-          const j = JSON.parse(text) as { error?: unknown };
-          if (typeof j.error === "string") message = j.error;
+          const json = JSON.parse(text) as { error?: unknown };
+          if (typeof json.error === "string") message = json.error;
         } catch {
-          /* keep text */
+          /* keep response text */
         }
         throw new Error(message || `HTTP ${res.status}`);
       }
@@ -289,8 +258,8 @@ export function ChatMain() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["guest-documents"] });
     },
-    onError: (e) => {
-      setSendError(e instanceof Error ? e.message : "Upload failed");
+    onError: (error) => {
+      setSendError(error instanceof Error ? error.message : "Upload failed");
     },
   });
 
@@ -313,29 +282,34 @@ export function ChatMain() {
     );
 
   const handlePasteImage = useCallback(
-    async (e: React.ClipboardEvent) => {
-      const items = e.clipboardData?.items;
+    async (event: React.ClipboardEvent) => {
+      const items = event.clipboardData?.items;
       if (!items) return;
       for (const item of items) {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            const img = await readFileAsBase64(file);
-            setPendingImages((p) => [...p, img]);
-          }
-        }
+        if (!item.type.startsWith("image/")) continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+        event.preventDefault();
+        const image = await readFileAsBase64(file);
+        setPendingImages((previous) => [...previous, image]);
       }
     },
     [],
   );
 
+  const isBusy = status === "sending" || status === "streaming";
+  const messageContent = draft.trim() || "What do you see in this image?";
+
   const sendMessage = async () => {
-    const text = draft.trim();
-    if (!text && pendingImages.length === 0) return;
+    if (sendLockRef.current) return;
+
+    const trimmedDraft = draft.trim();
+    if (!trimmedDraft && pendingImages.length === 0) return;
+
     if (!modelId && modelsQuery.data?.models?.length) {
       setModelId(modelsQuery.data.models[0]!.id);
     }
+
     const currentModel =
       modelId || modelsQuery.data?.models?.[0]?.id || "openai:gpt-4o-mini";
     const images =
@@ -343,127 +317,160 @@ export function ChatMain() {
         ? pendingImages.map(({ mimeType, base64 }) => ({ mimeType, base64 }))
         : undefined;
 
+    sendLockRef.current = true;
+    setSendError(null);
     setDraft("");
-    setPendingImages((prev) => {
-      for (const img of prev) {
-        URL.revokeObjectURL(img.preview);
+    setPendingImages((previous) => {
+      for (const image of previous) {
+        URL.revokeObjectURL(image.preview);
       }
       return [];
     });
-    setSendError(null);
-    setStreaming(true);
+
+    let assistantMessageId: string | null = null;
+    let targetChatKey = chatKey;
 
     try {
       if (!user) {
-        const nextUser: UiMessage = {
-          id: crypto.randomUUID(),
-          role: "user",
-          content: text || "(image)",
-          attachments: images,
-        };
-        const history = [...guestMessages, nextUser];
-        setGuestMessages(history);
-        const assistantId = crypto.randomUUID();
-        setGuestMessages((m) => [
-          ...m,
-          { id: assistantId, role: "assistant", content: "" },
-        ]);
+        const userMessageId = crypto.randomUUID();
+        assistantMessageId = crypto.randomUUID();
 
-        const res = await fetch("/api/guest/stream", {
+        startSend(
+          {
+            userMessage: {
+              id: userMessageId,
+              content: messageContent,
+              attachments: images,
+              synced: true,
+            },
+            assistantMessage: { id: assistantMessageId, synced: true },
+          },
+          targetChatKey,
+        );
+
+        const guestHistory = [
+          ...messages.map(toGuestRequestMessage),
+          {
+            role: "user" as const,
+            content: messageContent,
+            images,
+          },
+        ];
+
+        const response = await fetch("/api/guest/stream", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             modelId: currentModel,
-            messages: history.map((msg) => ({
-              role: msg.role,
-              content: msg.content,
-              images: msg.id === nextUser.id ? images : undefined,
-            })),
+            messages: guestHistory,
             documentIds: selectedDocIds.length ? selectedDocIds : undefined,
           }),
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
+
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
           throw new Error(
-            typeof err.error === "string" ? err.error : res.statusText,
+            typeof errorBody.error === "string"
+              ? errorBody.error
+              : response.statusText,
           );
         }
-        let acc = "";
-        await parseSseStream(res, (chunk) => {
-          acc += chunk;
-          setGuestMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantId ? { ...msg, content: acc } : msg,
-            ),
-          );
+
+        await parseSseStream(response, {
+          onToken: (chunk) =>
+            appendAssistantChunk(assistantMessageId!, chunk, targetChatKey),
+          onDone: () => completeAssistant(assistantMessageId!, targetChatKey),
         });
+
         void queryClient.invalidateQueries({ queryKey: ["guest-quota"] });
         setSelectedDocIds([]);
         return;
       }
 
-      let activeChatId = chatId;
+      let activeChatId = effectiveChatId;
+
       if (!activeChatId) {
         const created = await apiJson<{ chat: ChatRow }>("/api/chats", {
           method: "POST",
-          body: JSON.stringify({ title: text.slice(0, 80) }),
+          body: JSON.stringify({
+            title: trimmedDraft ? trimmedDraft.slice(0, 80) : undefined,
+          }),
         });
-        const newChatId = created.chat.id;
-        activeChatId = newChatId;
+        activeChatId = created.chat.id;
+        targetChatKey = getChatKey(user.id, activeChatId);
         upsertChatInListCache(queryClient, created.chat);
-        await queryClient.fetchInfiniteQuery({
-          queryKey: ["chat", newChatId],
-          initialPageParam: undefined as string | undefined,
-          queryFn: ({ pageParam }) =>
-            fetchChatDetailPage(
-              newChatId,
-              pageParam ? { before: pageParam } : {},
-            ),
-        });
-        setRoutingChatId(newChatId);
-        router.replace(`/chat/${newChatId}`);
+        primeNewChatDetailCache(queryClient, created.chat);
+        setRoutingChatId(activeChatId);
+        router.replace(`/chat/${activeChatId}`);
+      } else {
+        targetChatKey = getChatKey(user.id, activeChatId);
       }
 
-      const res = await fetch(
+      const userMessageId = crypto.randomUUID();
+      assistantMessageId = crypto.randomUUID();
+
+      startSend(
+        {
+          userMessage: {
+            id: userMessageId,
+            content: messageContent,
+            attachments: images,
+          },
+          assistantMessage: { id: assistantMessageId },
+        },
+        targetChatKey,
+      );
+
+      const response = await fetch(
         `/api/chats/${activeChatId}/messages/stream`,
         {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            content: text || "What do you see in this image?",
+            userMessageId,
+            assistantMessageId,
+            content: messageContent,
             modelId: currentModel,
             images,
             documentIds: selectedDocIds.length ? selectedDocIds : undefined,
           }),
         },
       );
-      if (!res.ok) throw new Error(await res.text());
 
-      setAuthStreamText("");
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+      }
 
-      appendOptimisticUserMessage(queryClient, activeChatId, {
-        content: text || "What do you see in this image?",
-        attachments: images ?? null,
+      await parseSseStream(response, {
+        onToken: (chunk) =>
+          appendAssistantChunk(assistantMessageId!, chunk, targetChatKey),
+        onDone: () => completeAssistant(assistantMessageId!, targetChatKey),
       });
 
-      await parseSseStream(res, (chunk) => {
-        setAuthStreamText((prev) => (prev ?? "") + chunk);
+      await queryClient.fetchInfiniteQuery({
+        queryKey: ["chat", activeChatId],
+        initialPageParam: undefined as string | undefined,
+        queryFn: ({ pageParam }) =>
+          fetchChatDetailPage(
+            activeChatId!,
+            pageParam ? { before: pageParam } : {},
+          ),
       });
-
-      // Refetch thread before clearing the stream overlay so the assistant row
-      // exists in cache (avoids show → blank → show).
-      await queryClient.refetchQueries({ queryKey: ["chat", activeChatId] });
-      setAuthStreamText(null);
       await queryClient.invalidateQueries({ queryKey: ["chats"] });
       setSelectedDocIds([]);
-    } catch (e) {
-      console.error(e);
-      setSendError(e instanceof Error ? e.message : "Failed to send");
-      setAuthStreamText(null);
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error ? error.message : "Failed to send message";
+      setSendError(message);
+      if (assistantMessageId) {
+        failAssistant(assistantMessageId, message, targetChatKey);
+      }
     } finally {
-      setStreaming(false);
+      sendLockRef.current = false;
     }
   };
 
@@ -478,11 +485,11 @@ export function ChatMain() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          {!user && (
+          {isGuestResolved && (
             <span className="text-muted-foreground text-xs">
               {quotaQuery.isLoading
-                ? "…"
-                : `${quotaQuery.data?.remaining ?? "—"} free left`}
+                ? "..."
+                : `${quotaQuery.data?.remaining ?? "-"} free left`}
             </span>
           )}
           <label className="sr-only" htmlFor="model">
@@ -492,102 +499,63 @@ export function ChatMain() {
             id="model"
             className="border-input bg-background ring-offset-background focus-visible:ring-ring h-9 max-w-[min(100vw-8rem,14rem)] rounded-md border px-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             value={modelId}
-            onChange={(e) => setModelId(e.target.value)}
-            disabled={
-              modelsQuery.isLoading || !modelsQuery.data?.models?.length
-            }
+            onChange={(event) => setModelId(event.target.value)}
+            disabled={modelsQuery.isLoading || !modelsQuery.data?.models?.length}
           >
-            {modelsQuery.data?.models?.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
+            {modelsQuery.data?.models?.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label}
               </option>
             ))}
           </select>
           {modelsQuery.isError && (
-            <span className="text-destructive max-w-[10rem] truncate text-xs">
+            <span className="text-destructive max-w-40 truncate text-xs">
               Set LLM keys in .env
             </span>
           )}
         </div>
       </header>
 
-      <ScrollArea className="min-h-0 flex-1 px-4 py-4">
-        {authLoading ||
-        (user && effectiveChatId && chatDetailQuery.isPending) ||
-        (streaming && displayMessages.length === 0) ? (
-          <div className="space-y-3">
-            <Skeleton className="h-16 w-[80%]" />
-            <Skeleton className="h-16 w-[70%] self-end" />
-          </div>
-        ) : displayMessages.length === 0 && !streaming ? (
-          <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-24 text-center">
-            <p className="text-lg font-medium text-foreground">
-              Start a conversation
-            </p>
-            <p className="max-w-sm text-sm">
-              Ask a question or paste an image. When not signed in, you can add
-              .txt/.pdf from the toolbar as context; sign in to keep chats and a
-              larger document library.
-            </p>
-          </div>
-        ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-8">
-            {user &&
-              effectiveChatId &&
-              chatDetailQuery.hasNextPage &&
-              displayMessages.length > 0 && (
-                <div className="flex justify-center">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground"
-                    disabled={chatDetailQuery.isFetchingNextPage}
-                    onClick={() => void chatDetailQuery.fetchNextPage()}
-                  >
-                    {chatDetailQuery.isFetchingNextPage
-                      ? "Loading older messages…"
-                      : "Load older messages"}
-                  </Button>
-                </div>
-              )}
-            {displayMessages.map((m) => (
-              <div
-                key={m.id}
-                className={cn(
-                  "flex",
-                  m.role === "user" ? "justify-end" : "justify-start",
-                )}
-              >
-                <MessageBubble m={m} />
-              </div>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
+      <ChatMessageList
+        messages={messages}
+        status={status}
+        isInitialLoading={
+          authLoading ||
+          (!!user && !!effectiveChatId && chatDetailQuery.isPending && messages.length === 0)
+        }
+        empty={messages.length === 0 && !isBusy}
+        canLoadOlder={
+          !!user &&
+          !!effectiveChatId &&
+          chatDetailQuery.hasNextPage &&
+          messages.length > 0
+        }
+        isLoadingOlder={chatDetailQuery.isFetchingNextPage}
+        onLoadOlder={() => void chatDetailQuery.fetchNextPage()}
+      />
 
       {contextLibraryDocs && (
         <div className="border-sidebar-border flex flex-wrap gap-2 border-t px-4 py-2">
           <span className="text-muted-foreground w-full text-xs">
             Context documents
           </span>
-          {contextLibraryDocs.map((d) => (
+          {contextLibraryDocs.map((document) => (
             <label
-              key={d.id}
+              key={document.id}
               className="flex cursor-pointer items-center gap-2 text-xs"
             >
               <input
                 type="checkbox"
-                checked={selectedDocIds.includes(d.id)}
-                onChange={(e) => {
-                  setSelectedDocIds((prev) =>
-                    e.target.checked
-                      ? [...prev, d.id]
-                      : prev.filter((x) => x !== d.id),
+                checked={selectedDocIds.includes(document.id)}
+                onChange={(event) => {
+                  setSelectedDocIds((previous) =>
+                    event.target.checked
+                      ? [...previous, document.id]
+                      : previous.filter((id) => id !== document.id),
                   );
                 }}
               />
-              <span className="truncate">{d.filename}</span>
+              <span className="truncate">{document.filename}</span>
             </label>
           ))}
           {contextLibraryDocs.length === 0 && (
@@ -598,14 +566,14 @@ export function ChatMain() {
         </div>
       )}
 
-      <div className="border-sidebar-border bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky bottom-0 border-t p-4 backdrop-blur">
+      <div className="border-sidebar-border bg-background/80 supports-backdrop-filter:bg-background/60 sticky bottom-0 border-t p-4 backdrop-blur">
         {pendingImages.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
-            {pendingImages.map((img, i) => (
-              <div key={img.preview} className="relative">
+            {pendingImages.map((image, index) => (
+              <div key={image.preview} className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={img.preview}
+                  src={image.preview}
                   alt=""
                   className="h-16 w-16 rounded-md object-cover"
                 />
@@ -613,10 +581,10 @@ export function ChatMain() {
                   type="button"
                   className="bg-background/90 absolute -top-1 -right-1 rounded-full p-0.5 text-xs"
                   onClick={() =>
-                    setPendingImages((p) => {
-                      const removed = p[i];
+                    setPendingImages((previous) => {
+                      const removed = previous[index];
                       if (removed) URL.revokeObjectURL(removed.preview);
-                      return p.filter((_, j) => j !== i);
+                      return previous.filter((_, itemIndex) => itemIndex !== index);
                     })
                   }
                 >
@@ -636,18 +604,18 @@ export function ChatMain() {
             </p>
           )}
           {user && isCreatingChat && (
-            <p className="text-muted-foreground text-sm">Creating chat…</p>
+            <p className="text-muted-foreground text-sm">Creating chat...</p>
           )}
           <Textarea
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(event) => setDraft(event.target.value)}
             onPaste={handlePasteImage}
-            placeholder="Message… (paste images)"
+            placeholder="Message... (paste images)"
             className="min-h-[96px] resize-none"
-            disabled={streaming || isCreatingChat}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
+            disabled={isBusy || isCreatingChat}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
                 void sendMessage();
               }
             }}
@@ -658,13 +626,13 @@ export function ChatMain() {
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
                 if (file) {
-                  const img = await readFileAsBase64(file);
-                  setPendingImages((p) => [...p, img]);
+                  const image = await readFileAsBase64(file);
+                  setPendingImages((previous) => [...previous, image]);
                 }
-                e.target.value = "";
+                event.target.value = "";
               }}
             />
             <input
@@ -672,20 +640,20 @@ export function ChatMain() {
               type="file"
               accept=".txt,.pdf,text/plain,application/pdf"
               className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
+              onChange={(event) => {
+                const file = event.target.files?.[0];
                 if (file) {
                   if (user) uploadDocMutation.mutate(file);
                   else uploadGuestDocMutation.mutate(file);
                 }
-                e.target.value = "";
+                event.target.value = "";
               }}
             />
             <Button
               type="button"
               variant="outline"
               size="icon"
-              disabled={streaming || isCreatingChat}
+              disabled={isBusy || isCreatingChat}
               onClick={() => fileInputRef.current?.click()}
               aria-label="Attach image"
               title="Attach image"
@@ -697,7 +665,7 @@ export function ChatMain() {
               variant="outline"
               size="icon"
               disabled={
-                streaming ||
+                isBusy ||
                 isCreatingChat ||
                 (user
                   ? uploadDocMutation.isPending
@@ -712,14 +680,14 @@ export function ChatMain() {
             <Button
               className="ml-auto gap-2"
               disabled={
-                streaming ||
+                isBusy ||
                 isCreatingChat ||
                 (!draft.trim() && pendingImages.length === 0) ||
                 modelsQuery.isError
               }
               onClick={() => void sendMessage()}
             >
-              {streaming ? (
+              {isBusy ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />

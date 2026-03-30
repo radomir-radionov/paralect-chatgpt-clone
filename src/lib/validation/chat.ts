@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const streamUserMessageSchema = z.object({
+  userMessageId: z.string().uuid(),
+  assistantMessageId: z.string().uuid(),
   content: z.string().min(1),
   modelId: z.string().min(1),
   images: z
