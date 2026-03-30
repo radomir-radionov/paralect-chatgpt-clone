@@ -1,6 +1,11 @@
 import { requireLlmKeys } from "@/lib/env";
+import { withStreamIdleTimeout } from "./idle-timeout";
 import { streamByModelId } from "./registry";
 import type { LlmMessage } from "./types";
+
+const STREAM_IDLE_TIMEOUT_MS = 30_000;
+const STREAM_IDLE_TIMEOUT_MESSAGE =
+  "The model stopped responding during streaming. Please try again.";
 
 function buildContextBlock(context?: string) {
   if (!context?.trim()) return "";
@@ -18,5 +23,8 @@ export async function* streamLlmCompletion(options: {
   const system =
     "You are a helpful assistant. Answer clearly and concisely." + ctx;
 
-  yield* streamByModelId(modelId, system, messages);
+  yield* withStreamIdleTimeout(streamByModelId(modelId, system, messages), {
+    timeoutMs: STREAM_IDLE_TIMEOUT_MS,
+    timeoutMessage: STREAM_IDLE_TIMEOUT_MESSAGE,
+  });
 }

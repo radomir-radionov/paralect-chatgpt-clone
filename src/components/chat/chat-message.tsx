@@ -62,7 +62,10 @@ export const ChatMessage = memo(function ChatMessage({
       {isErrored && (
         <div className="text-destructive mt-3 inline-flex items-start gap-2 text-xs">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{message.errorMessage ?? "Streaming interrupted."}</span>
+          <span>
+            {message.errorMessage ??
+              "Streaming interrupted before completion. Please try again."}
+          </span>
         </div>
       )}
     </div>

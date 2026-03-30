@@ -1,20 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { ChatMessageAttachment } from "@/lib/chat-api";
 import type {
   ChatThreadMessage,
   ChatThreadStatus,
 } from "@/components/chat/chat-thread.types";
-
-type ThreadSnapshot = {
-  version: 1;
-  status: ChatThreadStatus;
-  activeMessageId: string | null;
-  messages: ChatThreadMessage[];
-};
-
-type ThreadMode = "auth" | "guest";
+import {
+  buildThreadPersistencePayload,
+  createThreadPersistenceSession,
+  hasPendingState,
+  normalizeSnapshotForMode,
+  type ThreadMode,
+  type ThreadSnapshot,
+} from "@/components/chat/thread-persistence";
+import { threadSnapshotStore } from "@/components/chat/thread-snapshot-store";
 
 type ChatThreadState = {
   chatKey: string;
@@ -99,16 +99,6 @@ type UseChatThreadStateResult = {
   ) => void;
 };
 
-const STORAGE_PREFIX = "chat-thread-state";
-
-function isPendingMessage(message: ChatThreadMessage) {
-  return !message.synced || message.state !== "complete";
-}
-
-function hasPendingState(messages: ChatThreadMessage[]) {
-  return messages.some(isPendingMessage);
-}
-
 function dedupeById(messages: ChatThreadMessage[]) {
   const seen = new Set<string>();
   const out: ChatThreadMessage[] = [];
@@ -150,33 +140,6 @@ function mergeServerMessages(
   const localOnly = currentMessages.filter((message) => !serverIds.has(message.id));
 
   return dedupeById([...mergedFromServer, ...localOnly]);
-}
-
-function normalizeSnapshotForMode(
-  snapshot: ThreadSnapshot | undefined,
-  mode: ThreadMode,
-): ThreadSnapshot | undefined {
-  if (!snapshot) return undefined;
-
-  if (mode === "guest" && (snapshot.status === "sending" || snapshot.status === "streaming")) {
-    return {
-      ...snapshot,
-      status: "error" as const,
-      messages: snapshot.messages.map((message) =>
-        message.state === "streaming"
-          ? {
-              ...message,
-              state: "error" as const,
-              errorMessage:
-                message.errorMessage ??
-                "Guest streaming was interrupted by a refresh. Send again to continue.",
-            }
-          : message,
-      ),
-    };
-  }
-
-  return snapshot;
 }
 
 function initialStateForThread(
@@ -297,34 +260,6 @@ function reducer(state: ChatThreadState, action: ChatThreadAction): ChatThreadSt
   }
 }
 
-function storageKey(chatKey: string) {
-  return `${STORAGE_PREFIX}:${chatKey}`;
-}
-
-function readSnapshot(chatKey: string) {
-  if (typeof window === "undefined") return undefined;
-  const raw = window.sessionStorage.getItem(storageKey(chatKey));
-  if (!raw) return undefined;
-
-  try {
-    const parsed = JSON.parse(raw) as ThreadSnapshot;
-    if (parsed.version !== 1) return undefined;
-    return parsed;
-  } catch {
-    return undefined;
-  }
-}
-
-function writeSnapshot(chatKey: string, snapshot: ThreadSnapshot) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(storageKey(chatKey), JSON.stringify(snapshot));
-}
-
-function clearSnapshot(chatKey: string) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(storageKey(chatKey));
-}
-
 export function useChatThreadState({
   chatKey,
   mode,
@@ -332,27 +267,67 @@ export function useChatThreadState({
   hydrateFromServer,
 }: UseChatThreadStateOptions): UseChatThreadStateResult {
   const [state, dispatch] = useReducer(reducer, initialStateForThread(chatKey, undefined, mode));
+  const latestStateRef = useRef(state);
+  const persistence = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return createThreadPersistenceSession(window.sessionStorage, threadSnapshotStore);
+  }, []);
 
   useEffect(() => {
-    const snapshot = readSnapshot(chatKey);
-    if (
-      state.chatKey === chatKey &&
-      (!snapshot ||
-        state.messages.length > 0 ||
-        state.status !== "idle" ||
-        state.activeMessageId !== null)
-    ) {
-      return;
-    }
-    dispatch({
-      type: "openThread",
-      chatKey,
-      mode,
-      snapshot,
-    });
+    latestStateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (!persistence) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const latestState = latestStateRef.current;
+      const shouldHydrate =
+        latestState.chatKey !== chatKey ||
+        (latestState.messages.length === 0 &&
+          latestState.status === "idle" &&
+          latestState.activeMessageId === null);
+
+      if (!shouldHydrate) return;
+
+      try {
+        const snapshot = await persistence.read(chatKey, mode);
+        if (cancelled) return;
+
+        const currentState = latestStateRef.current;
+        const shouldOpenThread =
+          currentState.chatKey !== chatKey ||
+          (currentState.messages.length === 0 &&
+            currentState.status === "idle" &&
+            currentState.activeMessageId === null);
+
+        if (!shouldOpenThread) return;
+
+        dispatch({
+          type: "openThread",
+          chatKey,
+          mode,
+          snapshot,
+        });
+      } catch {
+        if (cancelled) return;
+        dispatch({
+          type: "openThread",
+          chatKey,
+          mode,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     chatKey,
     mode,
+    persistence,
     state.activeMessageId,
     state.chatKey,
     state.messages.length,
@@ -369,32 +344,33 @@ export function useChatThreadState({
   }, [chatKey, hydrateFromServer, serverMessages]);
 
   useEffect(() => {
+    if (!persistence) return;
     if (state.chatKey !== chatKey) return;
 
-    if (mode === "guest") {
-      writeSnapshot(chatKey, {
-        version: 1,
-        status: state.status,
-        activeMessageId: state.activeMessageId,
-        messages: state.messages,
-      });
-      return;
-    }
-
-    const pendingMessages = state.messages.filter(isPendingMessage);
-
-    if (pendingMessages.length === 0 && state.status !== "error") {
-      clearSnapshot(chatKey);
-      return;
-    }
-
-    writeSnapshot(chatKey, {
-      version: 1,
+    const payload = buildThreadPersistencePayload({
+      mode,
       status: state.status,
       activeMessageId: state.activeMessageId,
-      messages: pendingMessages,
+      messages: state.messages,
     });
-  }, [chatKey, mode, state]);
+
+    void (async () => {
+      try {
+        if (!payload) {
+          await persistence.clear(chatKey);
+          return;
+        }
+
+        await persistence.write(chatKey, payload);
+      } catch {
+        try {
+          await persistence.clear(chatKey);
+        } catch {
+          // Best-effort persistence should never surface runtime errors.
+        }
+      }
+    })();
+  }, [chatKey, mode, persistence, state]);
 
   const result = useMemo(
     () => ({

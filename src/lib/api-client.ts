@@ -72,6 +72,7 @@ export async function parseSseStream(
   if (!reader) throw new Error("No response body");
   const decoder = new TextDecoder();
   let buffer = "";
+  let sawDone = false;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -87,11 +88,16 @@ export async function parseSseStream(
         options.onToken?.(data.text);
       }
       if (data.type === "done") {
+        sawDone = true;
         options.onDone?.();
       }
       if (data.type === "error") {
         throw new Error(data.message ?? "Stream error");
       }
     }
+  }
+
+  if (!sawDone) {
+    throw new Error("Streaming interrupted before completion. Please try again.");
   }
 }

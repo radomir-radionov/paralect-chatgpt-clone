@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { normalizeGeminiProviderError } from "@/lib/chat-error";
 import { getServerEnv } from "@/lib/env";
 import type { LlmMessage } from "../types";
 import type { StreamChatCompletion } from "./types";
@@ -24,10 +25,14 @@ export const streamGemini: StreamChatCompletion = async function* (
   }));
   const last = messages[messages.length - 1]!;
   const chat = mdl.startChat({ history });
-  const result = await chat.sendMessageStream(geminiParts(last));
-  for await (const chunk of result.stream) {
-    const text = chunk.text();
-    if (text) yield text;
+  try {
+    const result = await chat.sendMessageStream(geminiParts(last));
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) yield text;
+    }
+  } catch (error) {
+    throw normalizeGeminiProviderError(error);
   }
 };
 

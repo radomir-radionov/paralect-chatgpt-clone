@@ -17,6 +17,10 @@ import { useChatShell } from "@/components/chat/chat-shell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiJson, parseSseStream } from "@/lib/api-client";
+import {
+  parseChatErrorResponseText,
+  toUserFacingChatErrorMessage,
+} from "@/lib/chat-error";
 import { primeNewChatDetailCache, upsertChatInListCache } from "@/lib/chats-cache";
 import {
   fetchChatDetailPage,
@@ -441,7 +445,7 @@ export function ChatMain() {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(text || `HTTP ${response.status}`);
+        throw new Error(parseChatErrorResponseText(text, response.status));
       }
 
       await parseSseStream(response, {
@@ -463,8 +467,7 @@ export function ChatMain() {
       setSelectedDocIds([]);
     } catch (error) {
       console.error(error);
-      const message =
-        error instanceof Error ? error.message : "Failed to send message";
+      const message = toUserFacingChatErrorMessage(error);
       setSendError(message);
       if (assistantMessageId) {
         failAssistant(assistantMessageId, message, targetChatKey);
