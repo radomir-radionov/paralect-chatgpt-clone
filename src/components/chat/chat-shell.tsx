@@ -95,11 +95,6 @@ export function ChatShell({ children }: { children: ReactNode }) {
     createChatMutation.mutate();
   }, [createChatMutation]);
 
-  const deletingChatId =
-    deleteChatMutation.isPending && deleteChatMutation.variables !== undefined
-      ? deleteChatMutation.variables
-      : undefined;
-
   const chatsLoading =
     !!user &&
     chatsQuery.data === undefined &&
@@ -171,7 +166,6 @@ export function ChatShell({ children }: { children: ReactNode }) {
       selectedChatId,
       guestQuotaLimit: quotaQuery.data?.limit,
       createPending: createChatMutation.isPending,
-      deletingChatId,
       onNewChat: handleNewChat,
       canDeleteChat: () => totalChats > 1,
       onDeleteChat: (id: string) => {
@@ -191,7 +185,6 @@ export function ChatShell({ children }: { children: ReactNode }) {
       selectedChatId,
       quotaQuery.data?.limit,
       createChatMutation.isPending,
-      deletingChatId,
       totalChats,
       handleNewChat,
       deleteChatMutation.mutate,

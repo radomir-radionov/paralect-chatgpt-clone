@@ -20,10 +20,10 @@ function testUserSend(content: string) {
   };
 }
 
-test("auth draft threads do not use persistence", () => {
+test("auth draft and guest threads do not use persistence", () => {
   assert.equal(shouldUseThreadPersistence("auth:draft", "auth"), false);
   assert.equal(shouldUseThreadPersistence("auth:chat-1", "auth"), true);
-  assert.equal(shouldUseThreadPersistence("guest:default", "guest"), true);
+  assert.equal(shouldUseThreadPersistence("guest:default", "guest"), false);
 });
 
 test("stale persisted draft reads do not reopen a moved thread", () => {

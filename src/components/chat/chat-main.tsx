@@ -1,7 +1,7 @@
 "use client";
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, ImageIcon, Loader2, Send } from "lucide-react";
+import { FileText, ImageIcon, Loader2, Send, Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
@@ -68,6 +68,32 @@ function buildUserSendParts(trimmed: string, hasImages: boolean) {
 }
 
 const MAX_DOCS_PER_MESSAGE = 8;
+
+type ContextDocumentRow = {
+  id: string;
+  filename: string;
+  status: string;
+  errorText?: string | null;
+};
+
+/** Human-readable status for the context library; DB may store `failed` + `errorText`. */
+function getContextDocumentStatusHint(doc: ContextDocumentRow): {
+  text: string;
+  title?: string;
+} {
+  if (doc.status === "ready") return { text: "" };
+  if (doc.status === "processing") return { text: "(processing…)" };
+  if (doc.status === "failed") {
+    const detail = doc.errorText?.trim();
+    if (!detail) return { text: "(failed)" };
+    const short = detail.length > 72 ? `${detail.slice(0, 69)}…` : detail;
+    return {
+      text: `(${short})`,
+      title: detail.length > 72 ? detail : undefined,
+    };
+  }
+  return { text: `(${doc.status})` };
+}
 
 type SendContext = {
   userMessageId: string;
@@ -395,7 +421,7 @@ export function ChatMain() {
     queryKey: ["documents"],
     queryFn: () =>
       apiJson<{
-        documents: { id: string; filename: string; status: string }[];
+        documents: ContextDocumentRow[];
       }>("/api/documents"),
     enabled: !!user,
   });
@@ -404,7 +430,7 @@ export function ChatMain() {
     queryKey: ["guest-documents"],
     queryFn: () =>
       apiJson<{
-        documents: { id: string; filename: string; status: string }[];
+        documents: ContextDocumentRow[];
       }>("/api/guest/documents"),
     enabled: isGuestMode,
   });
@@ -449,6 +475,52 @@ export function ChatMain() {
       });
     },
     [queryClient, user],
+  );
+
+  const handleDeleteContextDocument = useCallback(
+    async (documentId: string) => {
+      setSendError(null);
+      const queryKey = user ? (["documents"] as const) : (["guest-documents"] as const);
+      const previous = queryClient.getQueryData<{ documents: ContextDocumentRow[] }>(
+        queryKey,
+      );
+      const wasSelected = selectedDocumentIds.includes(documentId);
+
+      queryClient.setQueryData<{ documents: ContextDocumentRow[] }>(queryKey, (prev) => {
+        if (!prev) return prev;
+        return {
+          documents: prev.documents.filter((d) => d.id !== documentId),
+        };
+      });
+      setSelectedDocumentIds((prev) => prev.filter((id) => id !== documentId));
+
+      const path = user
+        ? `/api/documents/${documentId}`
+        : `/api/guest/documents/${documentId}`;
+      const res = await fetch(path, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        if (previous) {
+          queryClient.setQueryData(queryKey, previous);
+        } else {
+          void queryClient.invalidateQueries({ queryKey });
+        }
+        if (wasSelected) {
+          setSelectedDocumentIds((prev) =>
+            prev.includes(documentId) ? prev : [...prev, documentId],
+          );
+        }
+        const err = await res.json().catch(() => ({}));
+        setSendError(
+          typeof err.error === "string" ? err.error : "Could not remove document",
+        );
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    [queryClient, user, selectedDocumentIds],
   );
 
   const chatDetailQuery = useInfiniteQuery({
@@ -837,29 +909,51 @@ export function ChatMain() {
                 {docList.map((doc) => {
                   const ready = doc.status === "ready";
                   const checked = selectedDocumentIds.includes(doc.id);
+                  const statusHint = getContextDocumentStatusHint(doc);
                   return (
-                    <label
+                    <div
                       key={doc.id}
-                      className={`flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
-                        ready
-                          ? "cursor-pointer"
-                          : "cursor-not-allowed opacity-60"
+                      className={`flex max-w-full min-w-0 items-center gap-1 rounded-md border px-2 py-1 text-xs ${
+                        ready ? "" : "opacity-60"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        className="shrink-0"
-                        disabled={!ready || isBusy}
-                        checked={checked}
-                        onChange={() => toggleDocumentSelection(doc.id)}
-                      />
-                      <span className="truncate">{doc.filename}</span>
-                      {!ready && (
-                        <span className="text-muted-foreground shrink-0">
-                          ({doc.status})
-                        </span>
+                      <label
+                        className={`flex min-w-0 flex-1 items-center gap-1.5 ${
+                          ready
+                            ? "cursor-pointer"
+                            : "cursor-not-allowed"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="shrink-0"
+                          disabled={!ready || isBusy}
+                          checked={checked}
+                          onChange={() => toggleDocumentSelection(doc.id)}
+                        />
+                        <span className="min-w-0 truncate">{doc.filename}</span>
+                        {statusHint.text ? (
+                          <span
+                            className="text-muted-foreground min-w-0 shrink truncate"
+                            title={statusHint.title}
+                          >
+                            {statusHint.text}
+                          </span>
+                        ) : null}
+                      </label>
+                      {doc.status === "failed" && (
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-destructive shrink-0 rounded p-0.5"
+                          title="Remove from library"
+                          disabled={isBusy}
+                          onClick={() => void handleDeleteContextDocument(doc.id)}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden />
+                          <span className="sr-only">Remove document</span>
+                        </button>
                       )}
-                    </label>
+                    </div>
                   );
                 })}
               </div>

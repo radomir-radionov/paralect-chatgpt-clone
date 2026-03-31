@@ -54,7 +54,9 @@ function isTransientAuthDraftThread(chatKey: string, mode: ThreadMode) {
 }
 
 export function shouldUseThreadPersistence(chatKey: string, mode: ThreadMode) {
-  return !isTransientAuthDraftThread(chatKey, mode);
+  if (isTransientAuthDraftThread(chatKey, mode)) return false;
+  if (mode === "guest") return false;
+  return true;
 }
 
 type ShouldOpenPersistedThreadOptions = {

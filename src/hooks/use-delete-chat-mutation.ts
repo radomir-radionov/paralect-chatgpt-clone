@@ -39,18 +39,20 @@ export function useDeleteChatMutation({
       }
     },
     onMutate: async (id): Promise<DeleteMutationContext> => {
-      await queryClient.cancelQueries({ queryKey: ["chats"] });
       const previousChats = queryClient.getQueryData<{ chats: ChatSummary[] }>([
         "chats",
       ]);
+      // Apply list removal synchronously so the row disappears before any await.
       removeChatFromListCache(queryClient, id);
+      void queryClient.cancelQueries({ queryKey: ["chats"] });
+
       const current = chatId ?? routingChatId;
       const navigatedAway = current === id;
       const fallbackChatId =
         previousChats?.chats.find((chat) => chat.id !== id)?.id;
       if (navigatedAway) {
-        void queryClient.cancelQueries({ queryKey: ["chat", id] });
         queryClient.removeQueries({ queryKey: ["chat", id] });
+        void queryClient.cancelQueries({ queryKey: ["chat", id] });
         setPendingRouteSync({
           kind: "clear",
           navigation: {

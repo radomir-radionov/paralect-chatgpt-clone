@@ -26,7 +26,6 @@ export type ChatSidebarProps = {
   selectedChatId: string | undefined;
   guestQuotaLimit: number | undefined;
   createPending: boolean;
-  deletingChatId: string | undefined;
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
   onSignOut: () => void;
@@ -42,7 +41,6 @@ function ChatSidebarInner({
   selectedChatId,
   guestQuotaLimit,
   createPending,
-  deletingChatId,
   onNewChat,
   onDeleteChat,
   onSignOut,
@@ -103,7 +101,6 @@ function ChatSidebarInner({
             !chatsLoading &&
             !chatsError &&
             chats?.map((c) => {
-              const isDeleting = deletingChatId === c.id;
               const isDeletable =
                 !canDeleteChat || canDeleteChat(c.id);
               return (
@@ -116,11 +113,7 @@ function ChatSidebarInner({
                 >
                   <Link
                     href={`/chat/${c.id}`}
-                    className={cn(
-                      "hover:bg-sidebar-accent/80 flex min-w-0 flex-1 items-center rounded-md px-2 py-2 text-left text-sm",
-                      isDeleting && "pointer-events-none opacity-60",
-                    )}
-                    aria-disabled={isDeleting}
+                    className="hover:bg-sidebar-accent/80 flex min-w-0 flex-1 items-center rounded-md px-2 py-2 text-left text-sm"
                   >
                     <span className="truncate">{c.title}</span>
                   </Link>
@@ -131,14 +124,9 @@ function ChatSidebarInner({
                       size="icon"
                       className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                       onClick={() => onDeleteChat(c.id)}
-                      disabled={isDeleting}
                       aria-label="Delete chat"
                     >
-                      {isDeleting ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   )}
                 </div>
