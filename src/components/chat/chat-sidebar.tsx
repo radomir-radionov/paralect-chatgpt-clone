@@ -68,8 +68,7 @@ function ChatSidebarInner({
       <Separator />
       {!user && !authLoading && (
         <p className="text-muted-foreground text-xs leading-relaxed">
-          Try up to {guestQuotaLimit ?? 3} free prompts. Sign in to save chats,
-          upload documents to your library, and reuse them from the sidebar.
+          Try up to {guestQuotaLimit ?? 3} free prompts. Sign in to save chats.
         </p>
       )}
       <ScrollArea className="min-h-0 flex-1 pr-2">

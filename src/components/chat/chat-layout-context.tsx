@@ -8,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRecoverAuthHash } from "@/hooks/use-recover-auth-hash";
 import { useRealtimeChats } from "@/hooks/use-realtime-chats";
 import { useAuthUser } from "@/hooks/use-auth";
 
@@ -24,7 +23,6 @@ const ChatLayoutContext = createContext<ChatLayoutContextValue | null>(null);
 
 export function ChatLayoutProvider({ children }: { children: ReactNode }) {
   const { user, isLoading: authLoading, refetch: refetchAuth } = useAuthUser();
-  useRecoverAuthHash(refetchAuth);
   useRealtimeChats(user?.id);
   const [routingChatId, setRoutingChatId] = useState<string | undefined>();
 

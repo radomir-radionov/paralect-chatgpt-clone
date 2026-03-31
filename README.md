@@ -68,14 +68,10 @@ https://www.loom.com/share/8efa220c030a4861a29f4a0106994a43
 
 4. **Supabase Auth**
 
-   In Supabase → **Authentication** → **Providers**, enable **Email**. Create a user for testing or use sign-up in the app (`/login`).
-
-   **Email confirmation links** use a hash fragment (`#access_token=…`); only the browser can read it. After the user confirms their email, they must land on [`/auth/callback`](http://localhost:3000/auth/callback) so the app can sync session cookies. In Supabase → **Authentication** → **URL Configuration**, add these to **Redirect URLs** (adjust host for production):
+   Configure authentication providers as needed for your project. In Supabase → **Authentication** → **URL Configuration**, add these to **Redirect URLs** (adjust host for production):
 
    - `http://localhost:3000/auth/callback`
    - `https://<your-production-domain>/auth/callback`
-
-   Set **Site URL** to your app origin (e.g. `http://localhost:3000` for local dev). If confirmation emails still open `/chat#…` instead of `/auth/callback#…`, the chat UI runs [`useRecoverAuthHash`](src/hooks/use-recover-auth-hash.ts) to sync cookies; prefer **`/auth/callback`** in Supabase so users are not briefly treated as guests.
 
    **Email sending limits:** Supabase Auth applies rate limits on sign-up and other email flows. If you see *email rate limit exceeded*, wait and retry, review **Authentication → Rate Limits** in the [dashboard](https://supabase.com/docs/guides/auth/rate-limits), and for anything beyond quick testing configure **Authentication → SMTP Settings** with your own provider (e.g. Resend, SendGrid). For local development only, you can temporarily turn off **Confirm email** under Authentication so sign-up does not send confirmation mail.
 

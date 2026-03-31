@@ -30,35 +30,6 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-export async function uploadLibraryDocument(
-  path: "/api/documents" | "/api/guest/documents",
-  file: File,
-  options?: { chatId?: string },
-): Promise<{ document: { id: string } }> {
-  const fd = new FormData();
-  fd.append("file", file);
-  if (options?.chatId) {
-    fd.append("meta", JSON.stringify({ chatId: options.chatId }));
-  }
-  const res = await fetch(path, {
-    method: "POST",
-    body: fd,
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let message = text;
-    try {
-      const j = JSON.parse(text) as { error?: unknown };
-      if (typeof j.error === "string") message = j.error;
-    } catch {
-      /* keep text */
-    }
-    throw new Error(message || `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<{ document: { id: string } }>;
-}
-
 type SseEvent =
   | { type: "token"; text: string }
   | { type: "done" }
