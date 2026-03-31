@@ -1,7 +1,10 @@
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
-import { requireUser } from "@/server/auth/session";
+import {
+  assertUserPrincipal,
+  resolveRequestPrincipal,
+} from "@/server/auth/principal";
 import { getDb } from "@/server/db";
 import { chats, messages } from "@/server/db/schema";
 import { sseResponse } from "@/server/http/sse";
@@ -11,7 +14,7 @@ import { rateLimitOrThrow } from "@/server/rate-limit";
 import { isRagEmbeddingConfigured } from "@/server/rag/embed";
 import { USER_IMAGE_PROMPT } from "@/lib/chat-prompts";
 import { streamUserMessageSchema } from "@/lib/validation/chat";
-import { retrieveContextForUser } from "@/server/rag/retrieve";
+import { retrieveContextForPrincipal } from "@/server/rag/principal";
 
 const AUTH_STREAM_WINDOW_MS = 60_000;
 const AUTH_STREAM_MAX = 60;
@@ -28,7 +31,10 @@ export async function POST(
   context: { params: Promise<{ chatId: string }> },
 ) {
   try {
-    const user = await requireUser(request);
+    const principal = assertUserPrincipal(
+      await resolveRequestPrincipal(request),
+    );
+    const { user } = principal;
     rateLimitOrThrow(
       `chat-stream:${user.id}`,
       AUTH_STREAM_MAX,
@@ -85,8 +91,7 @@ export async function POST(
           { status: 400 },
         );
       }
-      ragContext = await retrieveContextForUser({
-        userId: user.id,
+      ragContext = await retrieveContextForPrincipal(principal, {
         query: body.content,
         documentIds: docIds,
       });

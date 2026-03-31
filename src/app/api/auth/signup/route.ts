@@ -6,10 +6,6 @@ import {
 } from "@/server/auth/gotrue";
 import { createRouteHandlerSupabase } from "@/server/auth/route-handler-supabase";
 
-function isAuthEmailRateLimitMessage(message: string): boolean {
-  return message.toLowerCase().includes("email rate limit");
-}
-
 export async function POST(request: Request) {
   try {
     const body = emailPasswordSchema.parse(await request.json());
@@ -46,15 +42,6 @@ export async function POST(request: Request) {
       return Response.json({ error: e.message }, { status: 400 });
     }
     const message = e instanceof Error ? e.message : "Sign up failed";
-    if (isAuthEmailRateLimitMessage(message)) {
-      return Response.json(
-        {
-          error:
-            "Too many confirmation emails were sent. Try again in a little while, or ask your project admin to review Supabase Auth rate limits and SMTP settings.",
-        },
-        { status: 429 },
-      );
-    }
     return Response.json({ error: message }, { status: 400 });
   }
 }

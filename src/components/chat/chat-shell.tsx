@@ -52,7 +52,7 @@ export function getChatShellLayoutClasses() {
 export function ChatShell({ children }: { children: ReactNode }) {
   const params = useParams<{ chatId?: string }>();
   const chatId = typeof params.chatId === "string" ? params.chatId : undefined;
-  const { user, authLoading, routingChatId, setRoutingChatId } = useChatLayout();
+  const { session, routingChatId, setRoutingChatId } = useChatLayout();
   const router = useRouter();
   const signOutMutation = useSignOutMutation();
   const [pendingRouteSync, setPendingRouteSync] = useState<RouteSyncIntent | null>(
@@ -61,7 +61,9 @@ export function ChatShell({ children }: { children: ReactNode }) {
   const lastAutoSelectedChatIdRef = useRef<string | null>(null);
 
   const selectedChatId = chatId ?? routingChatId;
-  const isGuestResolved = !authLoading && !user;
+  const user = session.role === "user" ? session.user : null;
+  const authLoading = session.status === "loading";
+  const isGuestSession = session.status === "guest";
 
   const quotaQuery = useQuery({
     queryKey: ["guest-quota"],
@@ -69,7 +71,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
       apiJson<{ used: number; remaining: number; limit: number }>(
         "/api/guest/quota",
       ),
-    enabled: isGuestResolved,
+    enabled: isGuestSession,
   });
 
   const chatsQuery = useQuery({
@@ -158,8 +160,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
 
   const sidebarProps = useMemo(
     () => ({
-      user,
-      authLoading,
+      session,
       chats: chatsQuery.data?.chats,
       chatsLoading,
       chatsError: !!user && chatsQuery.isError,

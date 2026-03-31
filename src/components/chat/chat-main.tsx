@@ -1,5 +1,6 @@
 "use client";
 
+import type { User } from "@supabase/supabase-js";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, ImageIcon, Loader2, Send, Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
@@ -30,6 +31,7 @@ import {
   fetchChatDetailPage,
   type ChatSummary,
 } from "@/lib/chat-api";
+import { getChatApiSurface } from "@/lib/chat-session";
 
 type ChatRow = ChatSummary;
 
@@ -250,7 +252,7 @@ async function sendGuestMessage(options: {
 
 async function sendAuthMessage(options: {
   ctx: SendContext;
-  user: NonNullable<ReturnType<typeof useChatLayout>["user"]>;
+  user: User;
   effectiveChatId: string | undefined;
   chatKey: string;
   streamController: AbortController;
@@ -364,13 +366,15 @@ async function sendAuthMessage(options: {
 export function ChatMain() {
   const params = useParams<{ chatId?: string }>();
   const chatId = typeof params.chatId === "string" ? params.chatId : undefined;
-  const { user, authLoading, routingChatId, setRoutingChatId } = useChatLayout();
+  const { session, routingChatId, setRoutingChatId } = useChatLayout();
   const { isCreatingChat } = useChatShell();
   const effectiveChatId = chatId ?? routingChatId;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const isAuthResolved = !authLoading;
-  const isGuestMode = isAuthResolved && !user;
+  const user = session.role === "user" ? session.user : null;
+  const authLoading = session.status === "loading";
+  const isGuestMode = session.status === "guest";
+  const apiSurface = getChatApiSurface(session);
   const [modelId, setModelId] = useState<string>("");
   const [draft, setDraft] = useState("");
   const [pendingImages, setPendingImages] = useState<
@@ -412,34 +416,24 @@ export function ChatMain() {
     queryKey: ["guest-quota"],
     queryFn: () =>
       apiJson<{ used: number; remaining: number; limit: number }>(
-        "/api/guest/quota",
+        apiSurface.quotaPath!,
       ),
     enabled: isGuestMode,
   });
 
   const documentsQuery = useQuery({
-    queryKey: ["documents"],
+    queryKey: apiSurface.documentQueryKey,
     queryFn: () =>
       apiJson<{
         documents: ContextDocumentRow[];
-      }>("/api/documents"),
-    enabled: !!user,
+      }>(apiSurface.documentsPath),
+    enabled: session.status !== "loading",
   });
 
-  const guestDocumentsQuery = useQuery({
-    queryKey: ["guest-documents"],
-    queryFn: () =>
-      apiJson<{
-        documents: ContextDocumentRow[];
-      }>("/api/guest/documents"),
-    enabled: isGuestMode,
-  });
-
-  const docList = useMemo(() => {
-    if (user) return documentsQuery.data?.documents ?? [];
-    if (isGuestMode) return guestDocumentsQuery.data?.documents ?? [];
-    return [];
-  }, [user, isGuestMode, documentsQuery.data, guestDocumentsQuery.data]);
+  const docList = useMemo(
+    () => documentsQuery.data?.documents ?? [],
+    [documentsQuery.data],
+  );
 
   const toggleDocumentSelection = useCallback((id: string) => {
     setSelectedDocumentIds((prev) => {
@@ -455,10 +449,9 @@ export function ChatMain() {
       event.target.value = "";
       if (!file) return;
       setSendError(null);
-      const path = user ? "/api/documents" : "/api/guest/documents";
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(path, {
+      const res = await fetch(apiSurface.documentsPath, {
         method: "POST",
         body: form,
         credentials: "include",
@@ -470,17 +463,15 @@ export function ChatMain() {
         );
         return;
       }
-      void queryClient.invalidateQueries({
-        queryKey: user ? ["documents"] : ["guest-documents"],
-      });
+      void queryClient.invalidateQueries({ queryKey: apiSurface.documentQueryKey });
     },
-    [queryClient, user],
+    [apiSurface.documentQueryKey, apiSurface.documentsPath, queryClient],
   );
 
   const handleDeleteContextDocument = useCallback(
     async (documentId: string) => {
       setSendError(null);
-      const queryKey = user ? (["documents"] as const) : (["guest-documents"] as const);
+      const queryKey = apiSurface.documentQueryKey;
       const previous = queryClient.getQueryData<{ documents: ContextDocumentRow[] }>(
         queryKey,
       );
@@ -494,10 +485,7 @@ export function ChatMain() {
       });
       setSelectedDocumentIds((prev) => prev.filter((id) => id !== documentId));
 
-      const path = user
-        ? `/api/documents/${documentId}`
-        : `/api/guest/documents/${documentId}`;
-      const res = await fetch(path, {
+      const res = await fetch(apiSurface.deleteDocumentPath(documentId), {
         method: "DELETE",
         credentials: "include",
       });
@@ -520,7 +508,7 @@ export function ChatMain() {
       }
       void queryClient.invalidateQueries({ queryKey });
     },
-    [queryClient, user, selectedDocumentIds],
+    [apiSurface, queryClient, selectedDocumentIds],
   );
 
   const chatDetailQuery = useInfiniteQuery({
@@ -575,7 +563,7 @@ export function ChatMain() {
 
   const chatKey = user
     ? getChatKey(user.id, effectiveChatId)
-    : isAuthResolved
+    : session.status === "guest"
       ? "guest:default"
       : "auth:draft";
   const {
@@ -589,7 +577,7 @@ export function ChatMain() {
     failAssistant,
   } = useChatThreadState({
     chatKey,
-    mode: user ? "auth" : isAuthResolved ? "guest" : "auth",
+    mode: session.status === "guest" ? "guest" : "auth",
     serverMessages,
     hydrateFromServer: !!user && !!effectiveChatId && !!chatDetailQuery.data,
   });
@@ -903,7 +891,7 @@ export function ChatMain() {
               {sendError}
             </p>
           )}
-          {(user || isGuestMode) && docList.length > 0 && (
+          {session.status !== "loading" && docList.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap gap-2">
                 {docList.map((doc) => {
@@ -965,7 +953,7 @@ export function ChatMain() {
               )}
             </div>
           )}
-          {user && isCreatingChat && (
+          {session.role === "user" && isCreatingChat && (
             <p className="text-muted-foreground text-sm">Creating chat...</p>
           )}
           <Textarea
@@ -983,7 +971,7 @@ export function ChatMain() {
             }}
           />
           <div className="flex flex-wrap items-center gap-2">
-            {(user || isGuestMode) && (
+            {session.status !== "loading" && (
               <input
                 ref={docUploadRef}
                 type="file"
@@ -1009,7 +997,7 @@ export function ChatMain() {
                 event.target.value = "";
               }}
             />
-            {(user || isGuestMode) && (
+            {session.status !== "loading" && (
               <Button
                 type="button"
                 variant="outline"

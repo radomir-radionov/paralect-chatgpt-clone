@@ -2,14 +2,20 @@ import { desc, eq } from "drizzle-orm";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
-import { requireUser } from "@/server/auth/session";
+import {
+  assertUserPrincipal,
+  resolveRequestPrincipal,
+} from "@/server/auth/principal";
 import { getDb } from "@/server/db";
 import { chats } from "@/server/db/schema";
 import { broadcastChatEvent } from "@/server/realtime/broadcast";
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser(request);
+    const principal = assertUserPrincipal(
+      await resolveRequestPrincipal(request),
+    );
+    const { user } = principal;
     await ensureProfile(user.id, user.email);
     const db = getDb();
     let rows = await db.query.chats.findMany({
@@ -41,7 +47,10 @@ const createSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const user = await requireUser(request);
+    const principal = assertUserPrincipal(
+      await resolveRequestPrincipal(request),
+    );
+    const { user } = principal;
     await ensureProfile(user.id, user.email);
     const json = await request.json().catch(() => ({}));
     const body = createSchema.parse(json);

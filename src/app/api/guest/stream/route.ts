@@ -1,16 +1,18 @@
 import { z } from "zod";
 import { guestStreamSchema } from "@/lib/validation/chat";
 import {
-  ANON_COOKIE_NAME,
   assertAnonymousQuota,
-  getOrCreateAnonymousSession,
   incrementAnonymousUsage,
 } from "@/server/anon/quota";
+import {
+  attachPrincipalHeaders,
+  resolveRequestPrincipal,
+} from "@/server/auth/principal";
 import { sseResponse } from "@/server/http/sse";
 import { streamLlmCompletion } from "@/server/llm/stream";
 import type { LlmMessage } from "@/server/llm/types";
 import { isRagEmbeddingConfigured } from "@/server/rag/embed";
-import { retrieveContextForGuest } from "@/server/rag/retrieve";
+import { retrieveContextForPrincipal } from "@/server/rag/principal";
 import { getClientIp, rateLimitOrThrow } from "@/server/rate-limit";
 
 const GUEST_STREAM_WINDOW_MS = 60_000;
@@ -24,10 +26,12 @@ export async function POST(request: Request) {
       GUEST_STREAM_WINDOW_MS,
     );
     const body = guestStreamSchema.parse(await request.json());
-    const cookieHeader = request.headers.get("cookie");
-    const session = await getOrCreateAnonymousSession(cookieHeader);
+    const principal = await resolveRequestPrincipal(request);
+    if (principal.role !== "guest") {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    assertAnonymousQuota(session.count);
+    assertAnonymousQuota(principal.count);
 
     const llmMessages: LlmMessage[] = body.messages.map((m) => ({
       role: m.role,
@@ -51,14 +55,13 @@ export async function POST(request: Request) {
         .reverse()
         .find((m) => m.role === "user");
       const query = lastUser?.content?.trim() ?? "";
-      ragContext = await retrieveContextForGuest({
-        sessionId: session.sessionId,
+      ragContext = await retrieveContextForPrincipal(principal, {
         query: query || " ",
         documentIds: docIds,
       });
     }
 
-    await incrementAnonymousUsage(session.sessionId);
+    await incrementAnonymousUsage(principal.sessionId);
 
     const stream = streamLlmCompletion({
       modelId: body.modelId,
@@ -69,10 +72,7 @@ export async function POST(request: Request) {
     const res = sseResponse(stream);
 
     const headers = new Headers(res.headers);
-    headers.set(
-      "Set-Cookie",
-      `${ANON_COOKIE_NAME}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 400}`,
-    );
+    attachPrincipalHeaders(headers, principal);
     return new Response(res.body, { status: res.status, headers });
   } catch (e) {
     return handleError(e);

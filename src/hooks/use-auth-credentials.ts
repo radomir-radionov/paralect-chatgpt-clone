@@ -3,6 +3,8 @@
 import type { User } from "@supabase/supabase-js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { clearGuestThreadState } from "@/components/chat/guest-thread-reset";
+import { threadSnapshotStore } from "@/components/chat/thread-snapshot-store";
 import { apiJson } from "@/lib/api-client";
 import { authMeQueryKey } from "@/lib/auth-query";
 import type { ChatSummary } from "@/lib/chat-api";
@@ -35,6 +37,11 @@ export function useAuthCredentials() {
       });
     },
     onSuccess: async (data) => {
+      if (typeof window !== "undefined") {
+        await clearGuestThreadState(window.sessionStorage, threadSnapshotStore);
+      }
+      queryClient.removeQueries({ queryKey: ["guest-quota"] });
+      queryClient.removeQueries({ queryKey: ["guest-documents"] });
       if (data.user) {
         queryClient.setQueryData(authMeQueryKey, data.user);
       }

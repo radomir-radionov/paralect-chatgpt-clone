@@ -1,19 +1,12 @@
 "use client";
 
-import type { User } from "@supabase/supabase-js";
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { useRealtimeChats } from "@/hooks/use-realtime-chats";
-import { useAuthUser } from "@/hooks/use-auth";
+import { useChatSession } from "@/hooks/use-chat-session";
+import type { ChatSessionState } from "@/lib/chat-session";
 
 type ChatLayoutContextValue = {
-  user: User | null;
-  authLoading: boolean;
+  session: ChatSessionState;
   routingChatId: string | undefined;
   setRoutingChatId: (id: string | undefined) => void;
 };
@@ -21,18 +14,17 @@ type ChatLayoutContextValue = {
 const ChatLayoutContext = createContext<ChatLayoutContextValue | null>(null);
 
 export function ChatLayoutProvider({ children }: { children: ReactNode }) {
-  const { user, isLoading: authLoading } = useAuthUser();
-  useRealtimeChats(user?.id);
+  const session = useChatSession();
+  useRealtimeChats(session.role === "user" ? session.user.id : undefined);
   const [routingChatId, setRoutingChatId] = useState<string | undefined>();
 
   const value = useMemo(
     () => ({
-      user: user ?? null,
-      authLoading,
+      session,
       routingChatId,
       setRoutingChatId,
     }),
-    [user, authLoading, routingChatId],
+    [session, routingChatId],
   );
 
   return (

@@ -1,6 +1,5 @@
 "use client";
 
-import type { User } from "@supabase/supabase-js";
 import {
   Loader2,
   LogIn,
@@ -15,11 +14,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ChatSummary } from "@/lib/chat-api";
+import type { ChatSessionState } from "@/lib/chat-session";
 import { cn } from "@/lib/utils";
 
 export type ChatSidebarProps = {
-  user: User | null;
-  authLoading: boolean;
+  session: ChatSessionState;
   chats: ChatSummary[] | undefined;
   chatsLoading: boolean;
   chatsError: boolean;
@@ -33,8 +32,7 @@ export type ChatSidebarProps = {
 };
 
 function ChatSidebarInner({
-  user,
-  authLoading,
+  session,
   chats,
   chatsLoading,
   chatsError,
@@ -46,6 +44,10 @@ function ChatSidebarInner({
   onSignOut,
   canDeleteChat,
 }: ChatSidebarProps) {
+  const user = session.role === "user" ? session.user : null;
+  const authLoading = session.status === "loading";
+  const isGuest = session.status === "guest";
+
   return (
     <div className="flex h-full flex-col gap-2 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -64,7 +66,7 @@ function ChatSidebarInner({
         )}
       </div>
       <Separator />
-      {!user && !authLoading && (
+      {isGuest && (
         <p className="text-muted-foreground text-xs leading-relaxed">
           Try up to {guestQuotaLimit ?? 3} free prompts. Sign in to save chats.
         </p>

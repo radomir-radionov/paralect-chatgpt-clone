@@ -2,14 +2,19 @@ import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
-import { requireUser } from "@/server/auth/session";
+import {
+  assertUserPrincipal,
+  resolveRequestPrincipal,
+} from "@/server/auth/principal";
 import { getDb } from "@/server/db";
 import { documents } from "@/server/db/schema";
-import { ingestUserDocument } from "@/server/rag/ingest";
 import {
-  isAllowedDocumentMimeType,
-  MAX_UPLOAD_BYTES,
-} from "@/server/rag/constants";
+  DocumentUploadError,
+  parseDocumentUpload,
+} from "@/server/documents/upload";
+import {
+  ingestDocumentForPrincipal,
+} from "@/server/rag/principal";
 import { rateLimitOrThrow } from "@/server/rate-limit";
 import {
   documentStoragePath,
@@ -23,7 +28,10 @@ const UPLOAD_MAX_PER_WINDOW = 30;
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser(request);
+    const principal = assertUserPrincipal(
+      await resolveRequestPrincipal(request),
+    );
+    const { user } = principal;
     await ensureProfile(user.id, user.email);
     const db = getDb();
     const rows = await db.query.documents.findMany({
@@ -39,7 +47,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireUser(request);
+    const principal = assertUserPrincipal(
+      await resolveRequestPrincipal(request),
+    );
+    const { user } = principal;
     await ensureProfile(user.id, user.email);
     rateLimitOrThrow(
       `doc-upload:${user.id}`,
@@ -47,24 +58,7 @@ export async function POST(request: Request) {
       UPLOAD_WINDOW_MS,
     );
 
-    const form = await request.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: "Missing file field" }, { status: 400 });
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      return NextResponse.json({ error: "File too large (max 5 MB)" }, { status: 413 });
-    }
-    const mimeType = file.type || "application/octet-stream";
-    if (!isAllowedDocumentMimeType(mimeType)) {
-      return NextResponse.json(
-        { error: "Unsupported file type" },
-        { status: 400 },
-      );
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const filename = sanitizeFilename(file.name);
+    const { buffer, filename, mimeType } = await parseDocumentUpload(request);
     const documentId = randomUUID();
     const storagePath = documentStoragePath(
       user.id,
@@ -89,7 +83,7 @@ export async function POST(request: Request) {
       throw e;
     }
 
-    await ingestUserDocument({
+    await ingestDocumentForPrincipal(principal, {
       documentId,
       buffer,
       mimeType,
@@ -104,14 +98,12 @@ export async function POST(request: Request) {
   }
 }
 
-function sanitizeFilename(name: string): string {
-  const base = name.replace(/[/\\]/g, "_").trim() || "document";
-  return base.slice(0, 200);
-}
-
 function handleError(e: unknown) {
   if (e instanceof z.ZodError) {
     return NextResponse.json({ error: e.flatten() }, { status: 400 });
+  }
+  if (e instanceof DocumentUploadError) {
+    return NextResponse.json({ error: e.message }, { status: e.status });
   }
   if (
     e instanceof Error &&

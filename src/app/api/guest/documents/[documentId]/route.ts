@@ -2,9 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  getOrCreateAnonymousSession,
-  ANON_COOKIE_NAME,
-} from "@/server/anon/quota";
+  attachPrincipalHeaders,
+  resolveRequestPrincipal,
+} from "@/server/auth/principal";
 import { getDb } from "@/server/db";
 import { guestDocuments } from "@/server/db/schema";
 
@@ -13,15 +13,17 @@ export async function DELETE(
   context: { params: Promise<{ documentId: string }> },
 ) {
   try {
-    const cookieHeader = request.headers.get("cookie");
-    const session = await getOrCreateAnonymousSession(cookieHeader);
+    const principal = await resolveRequestPrincipal(request);
+    if (principal.role !== "guest") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const { documentId } = await context.params;
     const db = getDb();
 
     const doc = await db.query.guestDocuments.findFirst({
       where: and(
         eq(guestDocuments.id, documentId),
-        eq(guestDocuments.sessionId, session.sessionId),
+        eq(guestDocuments.sessionId, principal.sessionId),
       ),
     });
     if (!doc) {
@@ -31,10 +33,7 @@ export async function DELETE(
     await db.delete(guestDocuments).where(eq(guestDocuments.id, documentId));
 
     const headers = new Headers();
-    headers.set(
-      "Set-Cookie",
-      `${ANON_COOKIE_NAME}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 400}`,
-    );
+    attachPrincipalHeaders(headers, principal);
     return NextResponse.json({ ok: true }, { headers });
   } catch (e) {
     return handleError(e);
