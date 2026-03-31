@@ -5,6 +5,7 @@ import {
   MAX_IMAGE_BYTES,
   MAX_IMAGES_PER_MESSAGE,
 } from "@/lib/image-attachment";
+const MAX_DOCUMENT_IDS_PER_MESSAGE = 8;
 
 const imagePartSchema = z
   .object({
@@ -30,6 +31,10 @@ export const streamUserMessageSchema = z
     content: z.string().max(32_000),
     modelId: z.string().min(1),
     images: z.array(imagePartSchema).length(MAX_IMAGES_PER_MESSAGE).optional(),
+    documentIds: z
+      .array(z.string().uuid())
+      .max(MAX_DOCUMENT_IDS_PER_MESSAGE)
+      .optional(),
   })
   .refine(
     (d) =>
@@ -58,4 +63,8 @@ export const guestStreamMessageSchema = z.discriminatedUnion("role", [
 export const guestStreamSchema = z.object({
   messages: z.array(guestStreamMessageSchema).min(1),
   modelId: z.string().min(1),
+  documentIds: z
+    .array(z.string().uuid())
+    .max(MAX_DOCUMENT_IDS_PER_MESSAGE)
+    .optional(),
 });

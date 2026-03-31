@@ -40,7 +40,7 @@ https://www.loom.com/share/8efa220c030a4861a29f4a0106994a43
    - `SUPABASE_ANON_KEY` — same as the anon key (used by API routes to validate sessions).
    - `SUPABASE_SERVICE_ROLE_KEY` — **server only**; never expose to the client.
    - `ANON_SESSION_SECRET` — long random string (≥32 characters) for signing anonymous cookies.
-   - `OPENAI_API_KEY` and/or `GOOGLE_GENERATIVE_AI_API_KEY` and/or OpenAI-compatible: `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and `OPENAI_COMPATIBLE_DEFAULT_MODEL` (the latter lists a model in `GET /api/models` and is used when the request has no `openai:` / `google:` / `compat:` prefix).
+   - `GOOGLE_GENERATIVE_AI_API_KEY` and/or `OPENAI_API_KEY` and/or OpenAI-compatible: `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and `OPENAI_COMPATIBLE_DEFAULT_MODEL` (the latter lists a model in `GET /api/models` and is used when the request has no `openai:` / `google:` / `compat:` prefix). **Document upload / RAG** uses **Gemini embeddings** (`text-embedding-004`) and requires `GOOGLE_GENERATIVE_AI_API_KEY`.
 
 3. **Database**
 
@@ -68,10 +68,7 @@ https://www.loom.com/share/8efa220c030a4861a29f4a0106994a43
 
 4. **Supabase Auth**
 
-   Configure authentication providers as needed for your project. In Supabase → **Authentication** → **URL Configuration**, add these to **Redirect URLs** (adjust host for production):
-
-   - `http://localhost:3000/auth/callback`
-   - `https://<your-production-domain>/auth/callback`
+   This app signs in with **email and password** via API routes (`/api/auth/login`, `/api/auth/signup`); you do not need a client redirect URL for that flow. If you later add OAuth, magic links, or email confirmation links that redirect back to your app, add the corresponding routes under **Authentication** → **URL Configuration** → **Redirect URLs**.
 
    **Email sending limits:** Supabase Auth applies rate limits on sign-up and other email flows. If you see *email rate limit exceeded*, wait and retry, review **Authentication → Rate Limits** in the [dashboard](https://supabase.com/docs/guides/auth/rate-limits), and for anything beyond quick testing configure **Authentication → SMTP Settings** with your own provider (e.g. Resend, SendGrid). For local development only, you can temporarily turn off **Confirm email** under Authentication so sign-up does not send confirmation mail.
 

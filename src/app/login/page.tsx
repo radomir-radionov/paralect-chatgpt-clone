@@ -1,60 +1,24 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiJson } from "@/lib/api-client";
-import type { ChatSummary } from "@/lib/chat-api";
-
-type Feedback =
-  | { type: "error"; text: string }
-  | { type: "info"; text: string };
+import {
+  type AuthMode,
+  type Credentials,
+  useAuthCredentials,
+} from "@/hooks/use-auth-credentials";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [credentials, setCredentials] = useState<Credentials>({
+    email: "",
+    password: "",
+  });
+  const [mode, setMode] = useState<AuthMode>("signin");
 
-  const submit = async () => {
-    setFeedback(null);
-    setLoading(true);
-    try {
-      const path = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
-      const res = await fetch(path, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = (await res.json()) as {
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error(data.error ?? "Auth failed");
-      }
-      await queryClient.prefetchQuery({
-        queryKey: ["chats"],
-        queryFn: () => apiJson<{ chats: ChatSummary[] }>("/api/chats"),
-      });
-      router.push("/chat");
-      router.refresh();
-    } catch (e) {
-      setFeedback({
-        type: "error",
-        text: e instanceof Error ? e.message : "Auth failed",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const authMutation = useAuthCredentials();
 
   return (
     <div className="bg-background flex min-h-dvh flex-col items-center justify-center px-4">
@@ -67,53 +31,68 @@ export default function LoginPage() {
             Use Supabase email / password auth.
           </p>
         </div>
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void authMutation.mutate({ mode, ...credentials });
+          }}
+        >
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
+              name="email"
               type="email"
               autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={credentials.email}
+              onChange={(e) =>
+                setCredentials((c) => ({ ...c, email: e.target.value }))
+              }
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
+              name="password"
               type="password"
               autoComplete={
                 mode === "signup" ? "new-password" : "current-password"
               }
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={credentials.password}
+              onChange={(e) =>
+                setCredentials((c) => ({ ...c, password: e.target.value }))
+              }
             />
           </div>
-          {feedback && (
-            <p
-              className={
-                feedback.type === "error"
-                  ? "text-destructive text-sm"
-                  : "text-muted-foreground text-sm"
-              }
-              role={feedback.type === "error" ? "alert" : "status"}
-            >
-              {feedback.text}
+          {authMutation.isError && (
+            <p className="text-destructive text-sm" role="alert">
+              {authMutation.error instanceof Error
+                ? authMutation.error.message
+                : "Auth failed"}
             </p>
           )}
           <Button
+            type="submit"
             className="w-full"
-            disabled={loading || !email || !password}
-            onClick={() => void submit()}
+            disabled={
+              authMutation.isPending ||
+              !credentials.email ||
+              !credentials.password
+            }
           >
-            {loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Sign up"}
+            {authMutation.isPending
+              ? "Please wait…"
+              : mode === "signin"
+                ? "Sign in"
+                : "Sign up"}
           </Button>
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground w-full text-center text-sm underline-offset-4 hover:underline"
             onClick={() => {
-              setFeedback(null);
+              authMutation.reset();
               setMode((m) => (m === "signin" ? "signup" : "signin"));
             }}
           >
@@ -121,9 +100,12 @@ export default function LoginPage() {
               ? "Need an account? Sign up"
               : "Have an account? Sign in"}
           </button>
-        </div>
+        </form>
         <p className="text-center text-sm">
-          <Link href="/chat" className="text-primary underline-offset-4 hover:underline">
+          <Link
+            href="/chat"
+            className="text-primary underline-offset-4 hover:underline"
+          >
             Continue as guest
           </Link>
         </p>

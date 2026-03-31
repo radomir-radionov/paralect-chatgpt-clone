@@ -9,6 +9,8 @@ import {
 import { sseResponse } from "@/server/http/sse";
 import { streamLlmCompletion } from "@/server/llm/stream";
 import type { LlmMessage } from "@/server/llm/types";
+import { isRagEmbeddingConfigured } from "@/server/rag/embed";
+import { retrieveContextForGuest } from "@/server/rag/retrieve";
 import { getClientIp, rateLimitOrThrow } from "@/server/rate-limit";
 
 const GUEST_STREAM_WINDOW_MS = 60_000;
@@ -33,11 +35,35 @@ export async function POST(request: Request) {
       images: m.role === "user" ? m.images : undefined,
     }));
 
+    let ragContext: string | undefined;
+    const docIds = body.documentIds;
+    if (docIds?.length) {
+      if (!isRagEmbeddingConfigured()) {
+        return Response.json(
+          {
+            error:
+              "GOOGLE_GENERATIVE_AI_API_KEY is required on the server to use document context (Gemini embeddings).",
+          },
+          { status: 400 },
+        );
+      }
+      const lastUser = [...body.messages]
+        .reverse()
+        .find((m) => m.role === "user");
+      const query = lastUser?.content?.trim() ?? "";
+      ragContext = await retrieveContextForGuest({
+        sessionId: session.sessionId,
+        query: query || " ",
+        documentIds: docIds,
+      });
+    }
+
     await incrementAnonymousUsage(session.sessionId);
 
     const stream = streamLlmCompletion({
       modelId: body.modelId,
       messages: llmMessages,
+      ragContext,
     });
 
     const res = sseResponse(stream);

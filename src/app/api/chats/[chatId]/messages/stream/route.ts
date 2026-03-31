@@ -8,8 +8,10 @@ import { sseResponse } from "@/server/http/sse";
 import { streamLlmCompletion } from "@/server/llm/stream";
 import { dbMessagesToLlm } from "@/server/messages/to-llm";
 import { rateLimitOrThrow } from "@/server/rate-limit";
+import { isRagEmbeddingConfigured } from "@/server/rag/embed";
 import { USER_IMAGE_PROMPT } from "@/lib/chat-prompts";
 import { streamUserMessageSchema } from "@/lib/validation/chat";
+import { retrieveContextForUser } from "@/server/rag/retrieve";
 
 const AUTH_STREAM_WINDOW_MS = 60_000;
 const AUTH_STREAM_MAX = 60;
@@ -71,6 +73,25 @@ export async function POST(
 
     const llmMessages = dbMessagesToLlm(msgRows);
 
+    let ragContext: string | undefined;
+    const docIds = body.documentIds;
+    if (docIds?.length) {
+      if (!isRagEmbeddingConfigured()) {
+        return Response.json(
+          {
+            error:
+              "GOOGLE_GENERATIVE_AI_API_KEY is required on the server to use document context (Gemini embeddings).",
+          },
+          { status: 400 },
+        );
+      }
+      ragContext = await retrieveContextForUser({
+        userId: user.id,
+        query: body.content,
+        documentIds: docIds,
+      });
+    }
+
     const title = computeChatTitle(chat.title, body.content);
 
     await db
@@ -84,6 +105,7 @@ export async function POST(
     const stream = streamLlmCompletion({
       modelId: body.modelId,
       messages: llmMessages,
+      ragContext,
     });
 
     return sseResponse(stream, async (fullText) => {

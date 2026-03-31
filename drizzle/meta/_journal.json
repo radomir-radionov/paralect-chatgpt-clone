@@ -29,6 +29,20 @@
       "when": 1774806000000,
       "tag": "0003_enable_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774807000000,
+      "tag": "0004_rag_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774808000000,
+      "tag": "0005_gemini_embedding_dims",
+      "breakpoints": true
     }
   ]
 }

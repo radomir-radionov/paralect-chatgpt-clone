@@ -21,20 +21,6 @@ import {
   type StartSendPayload,
 } from "@/components/chat/thread-state";
 import { threadSnapshotStore } from "@/components/chat/thread-snapshot-store";
-import { logDebugIngest } from "@/lib/debug-ingest";
-
-const hydrationIngestLogTimes = new Map<string, number>();
-const HYDRATION_INGEST_DEDUPE_MS = 4_000;
-
-function shouldLogHydrationIngest(signature: string) {
-  const now = Date.now();
-  const lastLoggedAt = hydrationIngestLogTimes.get(signature);
-  if (lastLoggedAt !== undefined && now - lastLoggedAt < HYDRATION_INGEST_DEDUPE_MS) {
-    return false;
-  }
-  hydrationIngestLogTimes.set(signature, now);
-  return true;
-}
 
 type UseChatThreadStateOptions = {
   chatKey: string;
@@ -243,24 +229,6 @@ export function useChatThreadState({
 
   useEffect(() => {
     if (!hydrateFromServer) return;
-    const latestServerMessageId = serverMessages.at(-1)?.id ?? "none";
-    const hydrationSignature = `${chatKey}:${serverMessages.length}:${latestServerMessageId}`;
-    if (shouldLogHydrationIngest(hydrationSignature)) {
-      logDebugIngest({
-        sessionId: "d6f539",
-        runId: "initial-debug",
-        hypothesisId: "H2-H4",
-        location: "src/components/chat/use-chat-thread-state.ts:hydrateFromServer",
-        message: "hydrateFromServer dispatching",
-        data: {
-          chatKey,
-          serverMessageCount: serverMessages.length,
-          localMessageCount: latestStateRef.current.messages.length,
-          localStatus: latestStateRef.current.status,
-          hydrationSignature,
-        },
-      });
-    }
     dispatch({
       type: "hydrateFromServer",
       chatKey,
@@ -347,20 +315,6 @@ export function useChatThreadState({
 
   const moveThread = useCallback((fromChatKey: string, toChatKey: string) => {
     const currentState = latestStateRef.current;
-    logDebugIngest({
-      sessionId: "d6f539",
-      runId: "initial-debug",
-      hypothesisId: "H3-H4",
-      location: "src/components/chat/use-chat-thread-state.ts:270",
-      message: "moveThread called",
-      data: {
-        fromChatKey,
-        toChatKey,
-        currentChatKey: currentState.chatKey,
-        messageCount: currentState.messages.length,
-        status: currentState.status,
-      },
-    });
     dispatch({
       type: "moveThread",
       fromChatKey,

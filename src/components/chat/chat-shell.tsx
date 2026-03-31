@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Menu } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -17,15 +17,12 @@ import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { useChatLayout } from "@/components/chat/chat-layout-context";
 import { buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useCreateChatMutation } from "@/hooks/use-create-chat-mutation";
+import { useDeleteChatMutation } from "@/hooks/use-delete-chat-mutation";
+import { useSignOutMutation } from "@/hooks/use-sign-out-mutation";
 import { apiJson } from "@/lib/api-client";
-import {
-  primeNewChatDetailCache,
-  removeChatFromListCache,
-  upsertChatInListCache,
-} from "@/lib/chats-cache";
-import { invalidateChatsListDebounced } from "@/lib/invalidate-chats-list";
 import type { ChatSummary } from "@/lib/chat-api";
-import { logDebugIngest } from "@/lib/debug-ingest";
+import type { RouteSyncIntent } from "@/types/chat-route-sync";
 
 type ChatRow = ChatSummary;
 
@@ -43,22 +40,6 @@ export function useChatShell(): ChatShellContextValue {
   return ctx;
 }
 
-type DeleteMutationContext = {
-  previousChats: { chats: ChatRow[] } | undefined;
-  navigatedAway: boolean;
-};
-
-type RouteSyncIntent =
-  | {
-      kind: "select";
-      chatId: string;
-      navigation: "replace" | "push";
-    }
-  | {
-      kind: "clear";
-      navigation: { method: "replace" | "push"; href: string };
-    };
-
 export function getChatShellLayoutClasses() {
   return {
     root: "bg-background flex min-h-[100dvh] flex-col md:h-[100dvh] md:flex-row md:overflow-hidden",
@@ -71,10 +52,9 @@ export function getChatShellLayoutClasses() {
 export function ChatShell({ children }: { children: ReactNode }) {
   const params = useParams<{ chatId?: string }>();
   const chatId = typeof params.chatId === "string" ? params.chatId : undefined;
-  const { user, authLoading, refetchAuth, routingChatId, setRoutingChatId } =
-    useChatLayout();
+  const { user, authLoading, routingChatId, setRoutingChatId } = useChatLayout();
   const router = useRouter();
-  const queryClient = useQueryClient();
+  const signOutMutation = useSignOutMutation();
   const [pendingRouteSync, setPendingRouteSync] = useState<RouteSyncIntent | null>(
     null,
   );
@@ -100,86 +80,20 @@ export function ChatShell({ children }: { children: ReactNode }) {
 
   const totalChats = chatsQuery.data?.chats.length ?? 0;
 
-  const createChatMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiJson<{ chat: ChatRow }>("/api/chats", {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      return res.chat;
-    },
-    onSuccess: (chat) => {
-      upsertChatInListCache(queryClient, chat);
-      primeNewChatDetailCache(queryClient, chat);
-      setPendingRouteSync({
-        kind: "select",
-        chatId: chat.id,
-        navigation: "replace",
-      });
-    },
+  const createChatMutation = useCreateChatMutation(setPendingRouteSync);
+  const deleteChatMutation = useDeleteChatMutation({
+    chatId,
+    routingChatId,
+    setPendingRouteSync,
   });
 
-  const deleteChatMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/chats/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        throw new Error(
-          res.status === 404 ? "Chat not found" : `Delete failed (${res.status})`,
-        );
-      }
-    },
-    onMutate: async (id): Promise<DeleteMutationContext> => {
-      await queryClient.cancelQueries({ queryKey: ["chats"] });
-      const previousChats = queryClient.getQueryData<{ chats: ChatRow[] }>([
-        "chats",
-      ]);
-      removeChatFromListCache(queryClient, id);
-      const current = chatId ?? routingChatId;
-      const navigatedAway = current === id;
-      const fallbackChatId =
-        previousChats?.chats.find((chat) => chat.id !== id)?.id;
-      if (navigatedAway) {
-        void queryClient.cancelQueries({ queryKey: ["chat", id] });
-        queryClient.removeQueries({ queryKey: ["chat", id] });
-        setPendingRouteSync({
-          kind: "clear",
-          navigation: {
-            method: "push",
-            href: fallbackChatId ? `/chat/${fallbackChatId}` : "/chat",
-          },
-        });
-      }
-      return { previousChats, navigatedAway };
-    },
-    onError: (_err, id, context) => {
-      if (context?.previousChats !== undefined) {
-        queryClient.setQueryData(["chats"], context.previousChats);
-      } else {
-        invalidateChatsListDebounced(queryClient);
-      }
-      if (context?.navigatedAway) {
-        router.replace(`/chat/${id}`);
-      }
-    },
-  });
-
-  const signOut = useCallback(async () => {
-    await fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    });
-    queryClient.removeQueries({ queryKey: ["chats"] });
-    await refetchAuth();
-    router.refresh();
-  }, [queryClient, refetchAuth, router]);
+  const signOut = useCallback(() => {
+    signOutMutation.mutate();
+  }, [signOutMutation]);
 
   const handleNewChat = useCallback(() => {
-    router.push("/chat");
     createChatMutation.mutate();
-  }, [router, createChatMutation]);
+  }, [createChatMutation]);
 
   const deletingChatId =
     deleteChatMutation.isPending && deleteChatMutation.variables !== undefined
@@ -232,19 +146,6 @@ export function ChatShell({ children }: { children: ReactNode }) {
     }
 
     lastAutoSelectedChatIdRef.current = firstChatId;
-    logDebugIngest({
-      sessionId: "2fed9e",
-      runId: "post-fix",
-      hypothesisId: "H1",
-      location: "src/components/chat/chat-shell.tsx:autoSelectFirstChatEffect",
-      message: "ChatShell auto-select scheduling route sync",
-      data: {
-        selectedChatId,
-        routingChatId,
-        firstChatId,
-        totalChats: chats.length,
-      },
-    });
     setPendingRouteSync({
       kind: "select",
       chatId: firstChatId,

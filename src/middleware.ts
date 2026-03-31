@@ -4,7 +4,10 @@ import { NextResponse, type NextRequest } from "next/server";
 function allowedApiOrigins(): string[] {
   const raw = process.env.ALLOWED_API_ORIGINS?.trim();
   if (!raw) return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export async function middleware(request: NextRequest) {
@@ -34,21 +37,35 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Logout clears cookies in the route handler only — skip getUser() here so we
+  // don't refresh the session immediately before signOut (client cache + nav stay in useSignOutMutation).
+  if (pathname === "/api/auth/logout" && request.method === "POST") {
+    const response = NextResponse.next({ request });
+    if (isApi && allowed.length > 0) {
+      const origin = request.headers.get("origin");
+      if (origin && allowed.includes(origin)) {
+        response.headers.set("Access-Control-Allow-Origin", origin);
+        response.headers.set("Access-Control-Allow-Credentials", "true");
+      }
+    }
+    return response;
+  }
+
   const response = NextResponse.next({ request });
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!;
   const anonKey = process.env.SUPABASE_ANON_KEY!;
   const supabase = createServerClient(supabaseUrl, anonKey, {
     cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
-          });
-        },
+      getAll() {
+        return request.cookies.getAll();
       },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options);
+        });
+      },
+    },
   });
   await supabase.auth.getUser();
 

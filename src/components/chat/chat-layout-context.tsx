@@ -14,7 +14,6 @@ import { useAuthUser } from "@/hooks/use-auth";
 type ChatLayoutContextValue = {
   user: User | null;
   authLoading: boolean;
-  refetchAuth: () => Promise<void>;
   routingChatId: string | undefined;
   setRoutingChatId: (id: string | undefined) => void;
 };
@@ -22,7 +21,7 @@ type ChatLayoutContextValue = {
 const ChatLayoutContext = createContext<ChatLayoutContextValue | null>(null);
 
 export function ChatLayoutProvider({ children }: { children: ReactNode }) {
-  const { user, isLoading: authLoading, refetch: refetchAuth } = useAuthUser();
+  const { user, isLoading: authLoading } = useAuthUser();
   useRealtimeChats(user?.id);
   const [routingChatId, setRoutingChatId] = useState<string | undefined>();
 
@@ -30,11 +29,10 @@ export function ChatLayoutProvider({ children }: { children: ReactNode }) {
     () => ({
       user: user ?? null,
       authLoading,
-      refetchAuth,
       routingChatId,
       setRoutingChatId,
     }),
-    [user, authLoading, refetchAuth, routingChatId],
+    [user, authLoading, routingChatId],
   );
 
   return (

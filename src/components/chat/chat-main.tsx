@@ -1,7 +1,7 @@
 "use client";
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImageIcon, Loader2, Send } from "lucide-react";
+import { FileText, ImageIcon, Loader2, Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
@@ -26,7 +26,6 @@ import {
   toUserFacingChatErrorMessage,
 } from "@/lib/chat-error";
 import { primeNewChatDetailCache, upsertChatInListCache } from "@/lib/chats-cache";
-import { logDebugIngest } from "@/lib/debug-ingest";
 import {
   fetchChatDetailPage,
   type ChatSummary,
@@ -68,12 +67,15 @@ function buildUserSendParts(trimmed: string, hasImages: boolean) {
   return { apiContent: trimmed, messageType: "text" as const };
 }
 
+const MAX_DOCS_PER_MESSAGE = 8;
+
 type SendContext = {
   userMessageId: string;
   assistantMessageId: string;
   sendParts: ReturnType<typeof buildUserSendParts>;
   imagePayload: { mimeType: string; base64: string }[] | undefined;
   currentModel: string;
+  documentIds: string[];
 };
 
 function buildSendContext({
@@ -81,6 +83,7 @@ function buildSendContext({
   pendingImages,
   modelId,
   modelsQuery,
+  documentIds,
 }: {
   draft: string;
   pendingImages: { mimeType: string; base64: string; preview: string }[];
@@ -88,6 +91,7 @@ function buildSendContext({
   modelsQuery: {
     data: { models: { id: string; label: string }[] } | undefined;
   };
+  documentIds: string[];
 }): SendContext {
   const trimmedDraft = draft.trim();
   const hasImages = pendingImages.length > 0;
@@ -107,6 +111,7 @@ function buildSendContext({
     sendParts,
     imagePayload,
     currentModel,
+    documentIds,
   };
 }
 
@@ -143,6 +148,7 @@ async function sendGuestMessage(options: {
   >["appendAssistantChunk"];
   completeAssistant: ReturnType<typeof useChatThreadState>["completeAssistant"];
   queryClient: ReturnType<typeof useQueryClient>;
+  onSentWithDocuments: () => void;
 }) {
   const {
     ctx,
@@ -152,10 +158,17 @@ async function sendGuestMessage(options: {
     appendAssistantChunk,
     completeAssistant,
     queryClient,
+    onSentWithDocuments,
   } = options;
 
-  const { userMessageId, assistantMessageId, sendParts, imagePayload, currentModel } =
-    ctx;
+  const {
+    userMessageId,
+    assistantMessageId,
+    sendParts,
+    imagePayload,
+    currentModel,
+    documentIds,
+  } = ctx;
 
   const targetChatKey = "guest:default";
 
@@ -190,6 +203,9 @@ async function sendGuestMessage(options: {
     body: JSON.stringify({
       modelId: currentModel,
       messages: guestHistory,
+      ...(documentIds.length
+        ? { documentIds }
+        : {}),
     }),
   });
 
@@ -202,6 +218,8 @@ async function sendGuestMessage(options: {
   );
 
   void queryClient.invalidateQueries({ queryKey: ["guest-quota"] });
+  void queryClient.invalidateQueries({ queryKey: ["guest-documents"] });
+  if (documentIds.length) onSentWithDocuments();
 }
 
 async function sendAuthMessage(options: {
@@ -219,6 +237,7 @@ async function sendAuthMessage(options: {
     typeof useChatThreadState
   >["appendAssistantChunk"];
   completeAssistant: ReturnType<typeof useChatThreadState>["completeAssistant"];
+  onSentWithDocuments: () => void;
 }) {
   const {
     ctx,
@@ -233,6 +252,7 @@ async function sendAuthMessage(options: {
     setRoutingChatId,
     appendAssistantChunk,
     completeAssistant,
+    onSentWithDocuments,
   } = options;
 
   const {
@@ -241,6 +261,7 @@ async function sendAuthMessage(options: {
     sendParts,
     imagePayload,
     currentModel,
+    documentIds,
   } = ctx;
 
   startSend({
@@ -251,20 +272,6 @@ async function sendAuthMessage(options: {
       attachments: imagePayload,
     },
     assistantMessage: { id: assistantMessageId },
-  });
-  logDebugIngest({
-    sessionId: "d6f539",
-    runId: "initial-debug",
-    hypothesisId: "H2-H4",
-    location: "src/components/chat/chat-main.tsx:startSend",
-    message: "auth startSend dispatched",
-    data: {
-      chatKey,
-      effectiveChatId: effectiveChatId ?? null,
-      userMessageId,
-      assistantMessageId,
-      imageCount: imagePayload?.length ?? 0,
-    },
   });
 
   let activeChatId = effectiveChatId;
@@ -285,19 +292,6 @@ async function sendAuthMessage(options: {
     primeNewChatDetailCache(queryClient, created.chat);
     setRoutingChatId(activeChatId);
     syncChatUrlToId = activeChatId;
-    logDebugIngest({
-      sessionId: "d6f539",
-      runId: "initial-debug",
-      hypothesisId: "H3-H4",
-      location: "src/components/chat/chat-main.tsx:afterCreateChat",
-      message: "auth draft thread moved after chat creation",
-      data: {
-        previousChatKey: chatKey,
-        targetChatKey,
-        activeChatId,
-        movedFromDraft: chatKey === "auth:draft",
-      },
-    });
   } else {
     targetChatKey = getChatKey(user.id, activeChatId);
     if (targetChatKey !== chatKey) {
@@ -318,22 +312,10 @@ async function sendAuthMessage(options: {
         content: sendParts.apiContent,
         modelId: currentModel,
         images: imagePayload,
+        ...(documentIds.length ? { documentIds } : {}),
       }),
     },
   );
-  logDebugIngest({
-    sessionId: "d6f539",
-    runId: "initial-debug",
-    hypothesisId: "H1-H4",
-    location: "src/components/chat/chat-main.tsx:streamResponse",
-    message: "auth stream response received",
-    data: {
-      activeChatId,
-      targetChatKey,
-      status: response.status,
-      ok: response.ok,
-    },
-  });
 
   await streamAssistantResponse(
     response,
@@ -346,6 +328,9 @@ async function sendAuthMessage(options: {
   if (syncChatUrlToId) {
     router.replace(`/chat/${syncChatUrlToId}`);
   }
+
+  void queryClient.invalidateQueries({ queryKey: ["documents"] });
+  if (documentIds.length) onSentWithDocuments();
 
   reconcileAuthChatAfterStream({ queryClient });
 }
@@ -366,7 +351,9 @@ export function ChatMain() {
     { mimeType: string; base64: string; preview: string }[]
   >([]);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docUploadRef = useRef<HTMLInputElement>(null);
   /** Blocks re-entrancy before React applies `status` from startSend (sync vs async gap). */
   const sendLockRef = useRef(false);
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -403,6 +390,66 @@ export function ChatMain() {
       ),
     enabled: isGuestMode,
   });
+
+  const documentsQuery = useQuery({
+    queryKey: ["documents"],
+    queryFn: () =>
+      apiJson<{
+        documents: { id: string; filename: string; status: string }[];
+      }>("/api/documents"),
+    enabled: !!user,
+  });
+
+  const guestDocumentsQuery = useQuery({
+    queryKey: ["guest-documents"],
+    queryFn: () =>
+      apiJson<{
+        documents: { id: string; filename: string; status: string }[];
+      }>("/api/guest/documents"),
+    enabled: isGuestMode,
+  });
+
+  const docList = useMemo(() => {
+    if (user) return documentsQuery.data?.documents ?? [];
+    if (isGuestMode) return guestDocumentsQuery.data?.documents ?? [];
+    return [];
+  }, [user, isGuestMode, documentsQuery.data, guestDocumentsQuery.data]);
+
+  const toggleDocumentSelection = useCallback((id: string) => {
+    setSelectedDocumentIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_DOCS_PER_MESSAGE) return prev;
+      return [...prev, id];
+    });
+  }, []);
+
+  const handleDocumentUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      setSendError(null);
+      const path = user ? "/api/documents" : "/api/guest/documents";
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(path, {
+        method: "POST",
+        body: form,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSendError(
+          typeof err.error === "string" ? err.error : "Document upload failed",
+        );
+        return;
+      }
+      void queryClient.invalidateQueries({
+        queryKey: user ? ["documents"] : ["guest-documents"],
+      });
+    },
+    [queryClient, user],
+  );
 
   const chatDetailQuery = useInfiniteQuery({
     queryKey: ["chat", effectiveChatId],
@@ -625,7 +672,14 @@ export function ChatMain() {
       modelsQuery: {
         data: modelsQuery.data,
       },
+      documentIds: selectedDocumentIds,
     });
+
+    const clearDocSelectionIfUsed = () => {
+      if (ctx.documentIds.length > 0) {
+        setSelectedDocumentIds([]);
+      }
+    };
 
     try {
       if (isGuestMode) {
@@ -637,6 +691,7 @@ export function ChatMain() {
           appendAssistantChunk,
           completeAssistant,
           queryClient,
+          onSentWithDocuments: clearDocSelectionIfUsed,
         });
         return;
       }
@@ -654,6 +709,7 @@ export function ChatMain() {
         setRoutingChatId,
         appendAssistantChunk,
         completeAssistant,
+        onSentWithDocuments: clearDocSelectionIfUsed,
       });
     } catch (error) {
       const isAbort =
@@ -669,20 +725,6 @@ export function ChatMain() {
 
       console.error(error);
       const message = toUserFacingChatErrorMessage(error);
-      logDebugIngest({
-        sessionId: "d6f539",
-        runId: "initial-debug",
-        hypothesisId: "H1-H4",
-        location: "src/components/chat/chat-main.tsx:sendError",
-        message: "auth sendMessage caught error",
-        data: {
-          targetChatKey,
-          assistantMessageId: ctx.assistantMessageId,
-          errorMessage: message,
-          rawError:
-            error instanceof Error ? error.message : "unknown non-error value",
-        },
-      });
       setSendError(message);
       failAssistant(ctx.assistantMessageId, message, targetChatKey);
     } finally {
@@ -789,6 +831,46 @@ export function ChatMain() {
               {sendError}
             </p>
           )}
+          {(user || isGuestMode) && docList.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap gap-2">
+                {docList.map((doc) => {
+                  const ready = doc.status === "ready";
+                  const checked = selectedDocumentIds.includes(doc.id);
+                  return (
+                    <label
+                      key={doc.id}
+                      className={`flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                        ready
+                          ? "cursor-pointer"
+                          : "cursor-not-allowed opacity-60"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="shrink-0"
+                        disabled={!ready || isBusy}
+                        checked={checked}
+                        onChange={() => toggleDocumentSelection(doc.id)}
+                      />
+                      <span className="truncate">{doc.filename}</span>
+                      {!ready && (
+                        <span className="text-muted-foreground shrink-0">
+                          ({doc.status})
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              {selectedDocumentIds.length > 0 && (
+                <p className="text-muted-foreground text-xs">
+                  {selectedDocumentIds.length} of {MAX_DOCS_PER_MESSAGE}{" "}
+                  documents selected for context
+                </p>
+              )}
+            </div>
+          )}
           {user && isCreatingChat && (
             <p className="text-muted-foreground text-sm">Creating chat...</p>
           )}
@@ -807,6 +889,15 @@ export function ChatMain() {
             }}
           />
           <div className="flex flex-wrap items-center gap-2">
+            {(user || isGuestMode) && (
+              <input
+                ref={docUploadRef}
+                type="file"
+                accept=".pdf,.txt,.md,.docx,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={(e) => void handleDocumentUpload(e)}
+              />
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -824,6 +915,19 @@ export function ChatMain() {
                 event.target.value = "";
               }}
             />
+            {(user || isGuestMode) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={isBusy || isCreatingChat}
+                onClick={() => docUploadRef.current?.click()}
+                aria-label="Attach document for context"
+                title="PDF, TXT, MD, DOCX · max 5 MB · uses GOOGLE_GENERATIVE_AI_API_KEY (Gemini embeddings)"
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -831,7 +935,7 @@ export function ChatMain() {
               disabled={isBusy || isCreatingChat}
               onClick={() => fileInputRef.current?.click()}
               aria-label="Attach image"
-              title="Attach image"
+              title="PNG, JPEG, WebP, GIF"
             >
               <ImageIcon className="h-4 w-4" />
             </Button>

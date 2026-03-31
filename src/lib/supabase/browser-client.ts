@@ -7,8 +7,7 @@ import { getRealtimeClientEnv } from "@/lib/env";
 let browserClient: SupabaseClient | null = null;
 
 /**
- * Shared browser Supabase client (`NEXT_PUBLIC_*` anon key) — Realtime subscribe,
- * email-confirmation hash recovery (`getSession()` parses `#access_token=…`), etc.
+ * Shared browser Supabase client (`NEXT_PUBLIC_*` anon key) — Realtime subscribe.
  */
 export function getBrowserSupabase(): SupabaseClient {
   if (browserClient) return browserClient;
