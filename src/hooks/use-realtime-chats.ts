@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { invalidateChatsListDebounced } from "@/lib/invalidate-chats-list";
 import { getRealtimeSupabase } from "@/lib/supabase/realtime";
 
 export function useRealtimeChats(userId: string | undefined) {
@@ -15,13 +16,13 @@ export function useRealtimeChats(userId: string | undefined) {
     });
     channel
       .on("broadcast", { event: "chat_created" }, () => {
-        void queryClient.invalidateQueries({ queryKey: ["chats"] });
+        invalidateChatsListDebounced(queryClient);
       })
       .on("broadcast", { event: "chat_deleted" }, () => {
-        void queryClient.invalidateQueries({ queryKey: ["chats"] });
+        invalidateChatsListDebounced(queryClient);
       })
       .on("broadcast", { event: "chat_updated" }, () => {
-        void queryClient.invalidateQueries({ queryKey: ["chats"] });
+        invalidateChatsListDebounced(queryClient);
       })
       .subscribe();
     return () => {

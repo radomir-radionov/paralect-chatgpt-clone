@@ -27,6 +27,12 @@ export type ThreadPersistencePayload = {
   snapshot: ThreadSnapshot;
 };
 
+export type PersistableThreadState = {
+  status: ChatThreadStatus;
+  activeMessageId: string | null;
+  messages: ChatThreadMessage[];
+};
+
 type SessionStorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 type BuildThreadPersistencePayloadOptions = {
@@ -44,31 +50,54 @@ export function hasPendingState(messages: ChatThreadMessage[]) {
   return messages.some(isPendingMessage);
 }
 
+/** Legacy persisted threads used status "done" after a successful stream; treat as idle. */
+function migrateLegacyThreadStatus(
+  status: ChatThreadStatus | "done",
+): ChatThreadStatus {
+  return status === "done" ? "idle" : status;
+}
+
 export function normalizeSnapshotForMode(
   snapshot: ThreadSnapshot | undefined,
   mode: ThreadMode,
 ): ThreadSnapshot | undefined {
   if (!snapshot) return undefined;
 
-  if (mode === "guest" && (snapshot.status === "sending" || snapshot.status === "streaming")) {
+  const snapshotWithIdle = {
+    ...snapshot,
+    status: migrateLegacyThreadStatus(
+      snapshot.status as ChatThreadStatus | "done",
+    ),
+  };
+
+  if (
+    (mode === "guest" || mode === "auth") &&
+    (snapshotWithIdle.status === "sending" ||
+      snapshotWithIdle.status === "streaming")
+  ) {
+    if (mode === "auth") {
+      // Mid-flight snapshots are written while streaming. Mapping them to "error"
+      // on reopen caused a visible flash before GET + hydrateFromServer (HMR/remount).
+      return undefined;
+    }
+    const fallback =
+      "Guest streaming was interrupted by a refresh. Send again to continue.";
     return {
-      ...snapshot,
+      ...snapshotWithIdle,
       status: "error",
-      messages: snapshot.messages.map((message) =>
+      messages: snapshotWithIdle.messages.map((message) =>
         message.state === "streaming"
           ? {
               ...message,
               state: "error",
-              errorMessage:
-                message.errorMessage ??
-                "Guest streaming was interrupted by a refresh. Send again to continue.",
+              errorMessage: message.errorMessage ?? fallback,
             }
           : message,
       ),
     };
   }
 
-  return snapshot;
+  return snapshotWithIdle;
 }
 
 export function buildThreadPersistencePayload({
@@ -104,6 +133,18 @@ export function buildThreadPersistencePayload({
   };
 }
 
+export function buildThreadPersistencePayloadFromState(
+  mode: ThreadMode,
+  state: PersistableThreadState,
+): ThreadPersistencePayload | null {
+  return buildThreadPersistencePayload({
+    mode,
+    status: state.status,
+    activeMessageId: state.activeMessageId,
+    messages: state.messages,
+  });
+}
+
 function storageKey(chatKey: string) {
   return `${STORAGE_PREFIX}:${chatKey}`;
 }
@@ -120,7 +161,9 @@ function parseThreadSessionManifest(raw: string | null): ThreadSessionManifest |
     return {
       version: 1,
       storage: "indexeddb",
-      status: parsed.status ?? "idle",
+      status: migrateLegacyThreadStatus(
+        (parsed.status ?? "idle") as ChatThreadStatus | "done",
+      ),
       activeMessageId: parsed.activeMessageId ?? null,
     };
   } catch {
@@ -156,3 +199,5 @@ export function createThreadPersistenceSession(
     },
   };
 }
+
+export type ThreadPersistenceSession = ReturnType<typeof createThreadPersistenceSession>;

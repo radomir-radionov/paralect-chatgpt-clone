@@ -20,6 +20,7 @@ import {
   removeChatFromListCache,
   upsertChatInListCache,
 } from "@/lib/chats-cache";
+import { invalidateChatsListDebounced } from "@/lib/invalidate-chats-list";
 import type { ChatSummary } from "@/lib/chat-api";
 
 type ChatRow = ChatSummary;
@@ -42,6 +43,15 @@ type DeleteMutationContext = {
   previousChats: { chats: ChatRow[] } | undefined;
   navigatedAway: boolean;
 };
+
+export function getChatShellLayoutClasses() {
+  return {
+    root: "bg-background flex min-h-[100dvh] flex-col md:h-[100dvh] md:flex-row md:overflow-hidden",
+    aside:
+      "border-sidebar-border bg-sidebar text-sidebar-foreground hidden w-72 shrink-0 flex-col border-r md:flex md:h-[100dvh]",
+    main: "flex min-h-0 min-w-0 flex-1 flex-col md:overflow-y-auto",
+  };
+}
 
 export function ChatShell({ children }: { children: ReactNode }) {
   const params = useParams<{ chatId?: string }>();
@@ -106,6 +116,8 @@ export function ChatShell({ children }: { children: ReactNode }) {
       const current = chatId ?? routingChatId;
       const navigatedAway = current === id;
       if (navigatedAway) {
+        void queryClient.cancelQueries({ queryKey: ["chat", id] });
+        queryClient.removeQueries({ queryKey: ["chat", id] });
         setRoutingChatId(undefined);
         router.push("/chat");
       }
@@ -115,7 +127,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
       if (context?.previousChats !== undefined) {
         queryClient.setQueryData(["chats"], context.previousChats);
       } else {
-        void queryClient.invalidateQueries({ queryKey: ["chats"] });
+        invalidateChatsListDebounced(queryClient);
       }
       if (context?.navigatedAway) {
         router.replace(`/chat/${id}`);
@@ -185,11 +197,12 @@ export function ChatShell({ children }: { children: ReactNode }) {
     () => ({ isCreatingChat: createChatMutation.isPending }),
     [createChatMutation.isPending],
   );
+  const layoutClasses = getChatShellLayoutClasses();
 
   return (
     <ChatShellContext.Provider value={shellContextValue}>
-      <div className="bg-background flex min-h-[100dvh] flex-col md:flex-row">
-        <aside className="border-sidebar-border bg-sidebar text-sidebar-foreground hidden w-72 shrink-0 flex-col border-r md:flex">
+      <div className={layoutClasses.root}>
+        <aside className={layoutClasses.aside}>
           <ChatSidebar {...sidebarProps} />
         </aside>
 
@@ -212,7 +225,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
           <span className="text-sm font-medium">Chat</span>
         </div>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
+        <main className={layoutClasses.main}>{children}</main>
       </div>
     </ChatShellContext.Provider>
   );

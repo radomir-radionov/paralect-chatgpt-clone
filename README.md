@@ -34,7 +34,7 @@ Full-stack chat app with **streaming** assistant replies, **multi-chat** sidebar
    Copy `.env.example` to `.env.local` and fill in values:
 
    - `DATABASE_URL` — Supabase Postgres connection string (pooler or direct).
-   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — from Supabase → Settings → API.
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — from Supabase → Settings → API. You do **not** need a separate `SUPABASE_URL`; [`getServerEnv()`](src/lib/env.ts) uses `NEXT_PUBLIC_SUPABASE_URL` for server auth and Supabase clients unless you set `SUPABASE_URL` yourself (optional override).
    - `SUPABASE_ANON_KEY` — same as the anon key (used by API routes to validate sessions).
    - `SUPABASE_SERVICE_ROLE_KEY` — **server only**; never expose to the client.
    - `ANON_SESSION_SECRET` — long random string (≥32 characters) for signing anonymous cookies.

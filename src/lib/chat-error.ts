@@ -68,6 +68,27 @@ export function toUserFacingChatErrorMessage(error: unknown): string {
   return message;
 }
 
+/** True when a chat detail GET failed because the thread is missing or not owned (terminal: stop polling / redirect). */
+export function isChatNotFoundError(error: unknown): boolean {
+  const msg = errorMessageString(error);
+  if (msg === "Not found" || msg === "HTTP 404") {
+    return true;
+  }
+  if (error && typeof error === "object" && "cause" in error) {
+    const { cause } = error as { cause: unknown };
+    if (cause !== undefined && cause !== error) {
+      return isChatNotFoundError(cause);
+    }
+  }
+  return false;
+}
+
+function errorMessageString(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "";
+}
+
 export function parseChatErrorResponseText(text: string, status: number): string {
   if (!text) return `HTTP ${status}`;
 

@@ -1,77 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import type { ChatMessageAttachment } from "@/lib/chat-api";
 import type {
   ChatThreadMessage,
   ChatThreadStatus,
 } from "@/components/chat/chat-thread.types";
 import {
+  buildThreadPersistencePayloadFromState,
   buildThreadPersistencePayload,
   createThreadPersistenceSession,
   hasPendingState,
-  normalizeSnapshotForMode,
+  type ThreadPersistenceSession,
   type ThreadMode,
   type ThreadSnapshot,
 } from "@/components/chat/thread-persistence";
+import {
+  type ChatThreadState,
+  createInitialThreadState,
+  reducer,
+  type StartSendPayload,
+} from "@/components/chat/thread-state";
 import { threadSnapshotStore } from "@/components/chat/thread-snapshot-store";
-
-type ChatThreadState = {
-  chatKey: string;
-  messages: ChatThreadMessage[];
-  status: ChatThreadStatus;
-  activeMessageId: string | null;
-};
-
-type StartSendPayload = {
-  userMessage: {
-    id: string;
-    content: string;
-    attachments?: ChatMessageAttachment[];
-    createdAt?: string;
-    synced?: boolean;
-  };
-  assistantMessage: {
-    id: string;
-    createdAt?: string;
-    synced?: boolean;
-  };
-};
-
-type ChatThreadAction =
-  | {
-      type: "openThread";
-      chatKey: string;
-      mode: ThreadMode;
-      snapshot?: ThreadSnapshot;
-    }
-  | {
-      type: "hydrateFromServer";
-      chatKey: string;
-      messages: ChatThreadMessage[];
-    }
-  | {
-      type: "startSend";
-      chatKey: string;
-      payload: StartSendPayload;
-    }
-  | {
-      type: "appendAssistantChunk";
-      chatKey: string;
-      messageId: string;
-      chunk: string;
-    }
-  | {
-      type: "completeAssistant";
-      chatKey: string;
-      messageId: string;
-    }
-  | {
-      type: "failAssistant";
-      chatKey: string;
-      messageId: string;
-      errorMessage: string;
-    };
+import { logDebugIngest } from "@/lib/debug-ingest";
 
 type UseChatThreadStateOptions = {
   chatKey: string;
@@ -86,6 +36,7 @@ type UseChatThreadStateResult = {
   activeMessageId: string | null;
   hasPendingSync: boolean;
   startSend: (payload: StartSendPayload, targetChatKey?: string) => void;
+  moveThread: (fromChatKey: string, toChatKey: string) => void;
   appendAssistantChunk: (
     messageId: string,
     chunk: string,
@@ -99,165 +50,84 @@ type UseChatThreadStateResult = {
   ) => void;
 };
 
-function dedupeById(messages: ChatThreadMessage[]) {
-  const seen = new Set<string>();
-  const out: ChatThreadMessage[] = [];
-  for (const message of messages) {
-    if (seen.has(message.id)) continue;
-    seen.add(message.id);
-    out.push(message);
-  }
-  return out;
+function isTransientAuthDraftThread(chatKey: string, mode: ThreadMode) {
+  return mode === "auth" && chatKey === "auth:draft";
 }
 
-function mergeServerMessages(
-  serverMessages: ChatThreadMessage[],
-  currentMessages: ChatThreadMessage[],
-) {
-  const localById = new Map(currentMessages.map((message) => [message.id, message]));
-  const mergedFromServer = serverMessages.map((message) => {
-    const local = localById.get(message.id);
-    if (!local) return message;
-
-    if (
-      local.role === "assistant" &&
-      (local.state === "streaming" || local.state === "error") &&
-      local.content.length > message.content.length
-    ) {
-      return {
-        ...local,
-        synced: false,
-      };
-    }
-
-    return {
-      ...message,
-      errorMessage: local.state === "error" ? local.errorMessage : undefined,
-    };
-  });
-
-  const serverIds = new Set(serverMessages.map((message) => message.id));
-  const localOnly = currentMessages.filter((message) => !serverIds.has(message.id));
-
-  return dedupeById([...mergedFromServer, ...localOnly]);
+export function shouldUseThreadPersistence(chatKey: string, mode: ThreadMode) {
+  return !isTransientAuthDraftThread(chatKey, mode);
 }
 
-function initialStateForThread(
+type ShouldOpenPersistedThreadOptions = {
+  requestedChatKey: string;
+  latestRequestedChatKey: string;
+  state: ChatThreadState;
+};
+
+/** Avoid replacing a hydrated auth thread with an empty persistence read (defense in depth vs async races). */
+export function shouldSkipOpenThreadEmptySnapshot(
+  mode: ThreadMode,
   chatKey: string,
-  snapshot?: ThreadSnapshot,
-  mode: ThreadMode = "auth",
-): ChatThreadState {
-  const normalizedSnapshot = normalizeSnapshotForMode(snapshot, mode);
-  return {
-    chatKey,
-    messages: normalizedSnapshot?.messages ?? [],
-    status: normalizedSnapshot?.status ?? "idle",
-    activeMessageId: normalizedSnapshot?.activeMessageId ?? null,
-  };
+  state: ChatThreadState,
+  snapshot: ThreadSnapshot | undefined,
+): boolean {
+  if (mode !== "auth") return false;
+  if (state.chatKey !== chatKey) return false;
+  if (state.messages.length === 0) return false;
+  if (!snapshot) return true;
+  return snapshot.messages.length === 0;
 }
 
-function reducer(state: ChatThreadState, action: ChatThreadAction): ChatThreadState {
-  if (action.type === "openThread") {
-    return initialStateForThread(action.chatKey, action.snapshot, action.mode);
+export function shouldOpenPersistedThread({
+  requestedChatKey,
+  latestRequestedChatKey,
+  state,
+}: ShouldOpenPersistedThreadOptions) {
+  if (latestRequestedChatKey !== requestedChatKey) return false;
+  if (
+    state.chatKey === "auth:draft" &&
+    requestedChatKey !== state.chatKey &&
+    hasPendingState(state.messages)
+  ) {
+    return false;
+  }
+  return (
+    state.chatKey !== requestedChatKey ||
+    (state.messages.length === 0 &&
+      state.status === "idle" &&
+      state.activeMessageId === null)
+  );
+}
+
+type PersistMovedThreadOptions = {
+  persistence: ThreadPersistenceSession | null;
+  state: ChatThreadState;
+  fromChatKey: string;
+  toChatKey: string;
+  mode: ThreadMode;
+};
+
+export async function persistMovedThread({
+  persistence,
+  state,
+  fromChatKey,
+  toChatKey,
+  mode,
+}: PersistMovedThreadOptions) {
+  if (!persistence) return;
+  if (fromChatKey === toChatKey) return;
+
+  const payload = shouldUseThreadPersistence(toChatKey, mode)
+    ? buildThreadPersistencePayloadFromState(mode, state)
+    : null;
+
+  if (payload) {
+    await persistence.write(toChatKey, payload);
+  } else if (shouldUseThreadPersistence(toChatKey, mode)) {
+    await persistence.clear(toChatKey);
   }
 
-  const targetState =
-    state.chatKey === action.chatKey ? state : initialStateForThread(action.chatKey);
-
-  switch (action.type) {
-    case "hydrateFromServer": {
-      const messages = mergeServerMessages(action.messages, targetState.messages);
-      const status =
-        hasPendingState(messages)
-          ? targetState.status
-          : targetState.status === "done"
-            ? "done"
-            : "idle";
-      return {
-        ...targetState,
-        messages,
-        status,
-      };
-    }
-
-    case "startSend": {
-      const createdAt = new Date().toISOString();
-      const userMessage: ChatThreadMessage = {
-        id: action.payload.userMessage.id,
-        role: "user",
-        content: action.payload.userMessage.content,
-        createdAt: action.payload.userMessage.createdAt ?? createdAt,
-        attachments: action.payload.userMessage.attachments,
-        state: "complete",
-        synced: action.payload.userMessage.synced ?? false,
-      };
-      const assistantMessage: ChatThreadMessage = {
-        id: action.payload.assistantMessage.id,
-        role: "assistant",
-        content: "",
-        createdAt: action.payload.assistantMessage.createdAt ?? createdAt,
-        state: "streaming",
-        synced: action.payload.assistantMessage.synced ?? false,
-      };
-      return {
-        ...targetState,
-        messages: dedupeById([...targetState.messages, userMessage, assistantMessage]),
-        status: "sending",
-        activeMessageId: assistantMessage.id,
-      };
-    }
-
-    case "appendAssistantChunk": {
-      return {
-        ...targetState,
-        messages: targetState.messages.map((message) =>
-          message.id === action.messageId
-            ? {
-                ...message,
-                content: `${message.content}${action.chunk}`,
-                state: "streaming",
-                errorMessage: undefined,
-              }
-            : message,
-        ),
-        status: "streaming",
-      };
-    }
-
-    case "completeAssistant": {
-      return {
-        ...targetState,
-        messages: targetState.messages.map((message) =>
-          message.id === action.messageId
-            ? {
-                ...message,
-                state: "complete",
-                errorMessage: undefined,
-              }
-            : message,
-        ),
-        status: "done",
-        activeMessageId: null,
-      };
-    }
-
-    case "failAssistant": {
-      return {
-        ...targetState,
-        messages: targetState.messages.map((message) =>
-          message.id === action.messageId
-            ? {
-                ...message,
-                state: "error",
-                errorMessage: action.errorMessage,
-              }
-            : message,
-        ),
-        status: "error",
-        activeMessageId: action.messageId,
-      };
-    }
-  }
+  await persistence.clear(fromChatKey);
 }
 
 export function useChatThreadState({
@@ -266,29 +136,47 @@ export function useChatThreadState({
   serverMessages,
   hydrateFromServer,
 }: UseChatThreadStateOptions): UseChatThreadStateResult {
-  const [state, dispatch] = useReducer(reducer, initialStateForThread(chatKey, undefined, mode));
+  const [state, dispatch] = useReducer(
+    reducer,
+    createInitialThreadState(chatKey, undefined, mode),
+  );
   const latestStateRef = useRef(state);
+  const latestChatKeyRef = useRef(chatKey);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistence = useMemo(() => {
     if (typeof window === "undefined") return null;
     return createThreadPersistenceSession(window.sessionStorage, threadSnapshotStore);
   }, []);
 
-  useEffect(() => {
-    latestStateRef.current = state;
-  }, [state]);
+  // Keep refs aligned with the latest render so async persistence callbacks never see stale state
+  // before useEffect runs (fixes hydrateFromServer then openThread wiping messages).
+  latestStateRef.current = state;
+  latestChatKeyRef.current = chatKey;
 
   useEffect(() => {
     if (!persistence) return;
+
+    if (!shouldUseThreadPersistence(chatKey, mode)) {
+      dispatch({
+        type: "openThread",
+        chatKey,
+        mode,
+      });
+      void persistence.clear(chatKey).catch(() => {
+        // Ignore stale draft cleanup failures; they should not block rendering.
+      });
+      return;
+    }
 
     let cancelled = false;
 
     void (async () => {
       const latestState = latestStateRef.current;
-      const shouldHydrate =
-        latestState.chatKey !== chatKey ||
-        (latestState.messages.length === 0 &&
-          latestState.status === "idle" &&
-          latestState.activeMessageId === null);
+      const shouldHydrate = shouldOpenPersistedThread({
+        requestedChatKey: chatKey,
+        latestRequestedChatKey: latestChatKeyRef.current,
+        state: latestState,
+      });
 
       if (!shouldHydrate) return;
 
@@ -297,13 +185,19 @@ export function useChatThreadState({
         if (cancelled) return;
 
         const currentState = latestStateRef.current;
-        const shouldOpenThread =
-          currentState.chatKey !== chatKey ||
-          (currentState.messages.length === 0 &&
-            currentState.status === "idle" &&
-            currentState.activeMessageId === null);
+        const shouldOpenThread = shouldOpenPersistedThread({
+          requestedChatKey: chatKey,
+          latestRequestedChatKey: latestChatKeyRef.current,
+          state: currentState,
+        });
 
         if (!shouldOpenThread) return;
+
+        if (
+          shouldSkipOpenThreadEmptySnapshot(mode, chatKey, currentState, snapshot)
+        ) {
+          return;
+        }
 
         dispatch({
           type: "openThread",
@@ -313,6 +207,12 @@ export function useChatThreadState({
         });
       } catch {
         if (cancelled) return;
+        const afterError = latestStateRef.current;
+        if (
+          shouldSkipOpenThreadEmptySnapshot(mode, chatKey, afterError, undefined)
+        ) {
+          return;
+        }
         dispatch({
           type: "openThread",
           chatKey,
@@ -324,18 +224,25 @@ export function useChatThreadState({
     return () => {
       cancelled = true;
     };
-  }, [
-    chatKey,
-    mode,
-    persistence,
-    state.activeMessageId,
-    state.chatKey,
-    state.messages.length,
-    state.status,
-  ]);
+    // State deps intentionally omitted: latestStateRef/latestChatKeyRef provide stale-free
+    // reads without causing this effect to re-run on every streaming token.
+  }, [chatKey, mode, persistence]);
 
   useEffect(() => {
     if (!hydrateFromServer) return;
+    logDebugIngest({
+      sessionId: "d6f539",
+      runId: "initial-debug",
+      hypothesisId: "H2-H4",
+      location: "src/components/chat/use-chat-thread-state.ts:204",
+      message: "hydrateFromServer dispatching",
+      data: {
+        chatKey,
+        serverMessageCount: serverMessages.length,
+        localMessageCount: latestStateRef.current.messages.length,
+        localStatus: latestStateRef.current.status,
+      },
+    });
     dispatch({
       type: "hydrateFromServer",
       chatKey,
@@ -347,29 +254,56 @@ export function useChatThreadState({
     if (!persistence) return;
     if (state.chatKey !== chatKey) return;
 
-    const payload = buildThreadPersistencePayload({
-      mode,
-      status: state.status,
-      activeMessageId: state.activeMessageId,
-      messages: state.messages,
-    });
+    if (!shouldUseThreadPersistence(chatKey, mode)) {
+      void persistence.clear(chatKey).catch(() => {
+        // Best-effort cleanup for transient draft snapshots.
+      });
+      return;
+    }
 
-    void (async () => {
-      try {
-        if (!payload) {
-          await persistence.clear(chatKey);
-          return;
-        }
+    // Debounce writes: during streaming every token produces a new state reference.
+    // We only need to persist when state settles, not on every individual token.
+    if (persistTimerRef.current !== null) {
+      clearTimeout(persistTimerRef.current);
+    }
 
-        await persistence.write(chatKey, payload);
-      } catch {
+    const capturedStatus = state.status;
+    const capturedActiveMessageId = state.activeMessageId;
+    const capturedMessages = state.messages;
+
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+
+      const payload = buildThreadPersistencePayload({
+        mode,
+        status: capturedStatus,
+        activeMessageId: capturedActiveMessageId,
+        messages: capturedMessages,
+      });
+
+      void (async () => {
         try {
-          await persistence.clear(chatKey);
+          if (!payload) {
+            await persistence.clear(chatKey);
+            return;
+          }
+          await persistence.write(chatKey, payload);
         } catch {
-          // Best-effort persistence should never surface runtime errors.
+          try {
+            await persistence.clear(chatKey);
+          } catch {
+            // Best-effort persistence should never surface runtime errors.
+          }
         }
+      })();
+    }, 400);
+
+    return () => {
+      if (persistTimerRef.current !== null) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
       }
-    })();
+    };
   }, [chatKey, mode, persistence, state]);
 
   const result = useMemo(
@@ -392,6 +326,39 @@ export function useChatThreadState({
     },
     [chatKey],
   );
+
+  const moveThread = useCallback((fromChatKey: string, toChatKey: string) => {
+    const currentState = latestStateRef.current;
+    logDebugIngest({
+      sessionId: "d6f539",
+      runId: "initial-debug",
+      hypothesisId: "H3-H4",
+      location: "src/components/chat/use-chat-thread-state.ts:270",
+      message: "moveThread called",
+      data: {
+        fromChatKey,
+        toChatKey,
+        currentChatKey: currentState.chatKey,
+        messageCount: currentState.messages.length,
+        status: currentState.status,
+      },
+    });
+    dispatch({
+      type: "moveThread",
+      fromChatKey,
+      toChatKey,
+    });
+    if (!persistence) return;
+    void persistMovedThread({
+      persistence,
+      state: currentState,
+      fromChatKey,
+      toChatKey,
+      mode,
+    }).catch(() => {
+      // Best-effort cleanup for stale draft snapshots.
+    });
+  }, [mode, persistence]);
 
   const appendAssistantChunk = useCallback(
     (messageId: string, chunk: string, targetChatKey = chatKey) => {
@@ -431,6 +398,7 @@ export function useChatThreadState({
   return {
     ...result,
     startSend,
+    moveThread,
     appendAssistantChunk,
     completeAssistant,
     failAssistant,

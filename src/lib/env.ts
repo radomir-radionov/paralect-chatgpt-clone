@@ -31,6 +31,7 @@ export function getServerEnv(): ServerEnv {
   const nextPublicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serverEnvInput = {
     ...process.env,
+    /** Prefer explicit `SUPABASE_URL`; otherwise same project URL as the client (`NEXT_PUBLIC_*`). */
     SUPABASE_URL: process.env.SUPABASE_URL ?? nextPublicSupabaseUrl,
   };
   const parsed = server.safeParse(serverEnvInput);

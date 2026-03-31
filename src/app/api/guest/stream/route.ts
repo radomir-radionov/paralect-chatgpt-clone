@@ -6,7 +6,6 @@ import {
   getOrCreateAnonymousSession,
   incrementAnonymousUsage,
 } from "@/server/anon/quota";
-import { loadAnonymousDocumentContext } from "@/server/documents/anonymous-context";
 import { sseResponse } from "@/server/http/sse";
 import { streamLlmCompletion } from "@/server/llm/stream";
 import type { LlmMessage } from "@/server/llm/types";
@@ -31,20 +30,14 @@ export async function POST(request: Request) {
     const llmMessages: LlmMessage[] = body.messages.map((m) => ({
       role: m.role,
       content: m.content,
-      images: m.images,
+      images: m.role === "user" ? m.images : undefined,
     }));
 
     await incrementAnonymousUsage(session.sessionId);
 
-    const docContext = await loadAnonymousDocumentContext(
-      session.sessionId,
-      body.documentIds,
-    );
-
     const stream = streamLlmCompletion({
       modelId: body.modelId,
       messages: llmMessages,
-      context: docContext,
     });
 
     const res = sseResponse(stream);

@@ -1,27 +1,32 @@
 "use client";
 
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { ImageIcon, Loader2, Paperclip, Send } from "lucide-react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ImageIcon, Loader2, Send } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { toThreadMessage, type ChatThreadMessage } from "@/components/chat/chat-thread.types";
+import { reconcileAuthChatAfterStream } from "@/components/chat/chat-sync";
+import { shouldPollPendingSync } from "@/components/chat/thread-state";
 import { useChatThreadState } from "@/components/chat/use-chat-thread-state";
 import { useChatLayout } from "@/components/chat/chat-layout-context";
 import { useChatShell } from "@/components/chat/chat-shell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiJson, parseSseStream } from "@/lib/api-client";
+import { USER_IMAGE_PROMPT } from "@/lib/chat-prompts";
 import {
+  assertImageFileClient,
+  CHAT_IMAGE_ACCEPT_ATTR,
+  getClipboardImageFile,
+} from "@/lib/image-attachment";
+import {
+  isChatNotFoundError,
   parseChatErrorResponseText,
   toUserFacingChatErrorMessage,
 } from "@/lib/chat-error";
 import { primeNewChatDetailCache, upsertChatInListCache } from "@/lib/chats-cache";
+import { logDebugIngest } from "@/lib/debug-ingest";
 import {
   fetchChatDetailPage,
   type ChatSummary,
@@ -34,17 +39,33 @@ function getChatKey(userId: string | undefined, chatId: string | undefined) {
 }
 
 function toGuestRequestMessage(message: ChatThreadMessage) {
+  if (message.role === "assistant") {
+    return { role: "assistant" as const, content: message.content };
+  }
+  const images = message.attachments?.length
+    ? message.attachments.map((attachment) => ({
+        mimeType: attachment.mimeType,
+        base64: attachment.base64,
+      }))
+    : undefined;
   return {
-    role: message.role,
+    role: "user" as const,
     content: message.content,
-    images:
-      message.role === "user" && message.attachments?.length
-        ? message.attachments.map((attachment) => ({
-            mimeType: attachment.mimeType,
-            base64: attachment.base64,
-          }))
-        : undefined,
+    images,
   };
+}
+
+function buildUserSendParts(trimmed: string, hasImages: boolean) {
+  if (hasImages && !trimmed) {
+    return {
+      apiContent: USER_IMAGE_PROMPT,
+      messageType: "image" as const,
+    };
+  }
+  if (hasImages) {
+    return { apiContent: trimmed, messageType: "image" as const };
+  }
+  return { apiContent: trimmed, messageType: "text" as const };
 }
 
 export function ChatMain() {
@@ -61,11 +82,11 @@ export function ChatMain() {
   const [pendingImages, setPendingImages] = useState<
     { mimeType: string; base64: string; preview: string }[]
   >([]);
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [sendError, setSendError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const docInputRef = useRef<HTMLInputElement>(null);
+  /** Blocks re-entrancy before React applies `status` from startSend (sync vs async gap). */
   const sendLockRef = useRef(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const modelsQuery = useQuery({
     queryKey: ["models"],
@@ -80,14 +101,16 @@ export function ChatMain() {
   }, [modelsQuery.data, modelId]);
 
   useEffect(() => {
-    setSelectedDocIds([]);
-  }, [user?.id]);
-
-  useEffect(() => {
     if (chatId && routingChatId && chatId === routingChatId) {
       setRoutingChatId(undefined);
     }
   }, [chatId, routingChatId, setRoutingChatId]);
+
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+    };
+  }, []);
 
   const quotaQuery = useQuery({
     queryKey: ["guest-quota"],
@@ -111,31 +134,26 @@ export function ChatMain() {
         ? lastPage.page.oldestMessageId
         : undefined,
     enabled: !!user && !!effectiveChatId,
+    retry: (failureCount, error) => {
+      if (isChatNotFoundError(error)) return false;
+      return failureCount < 1;
+    },
   });
 
-  const documentsQuery = useQuery({
-    queryKey: ["documents"],
-    queryFn: () =>
-      apiJson<{ documents: { id: string; filename: string }[] }>(
-        "/api/documents",
-      ),
-    enabled: !!user,
-  });
-
-  const guestDocumentsQuery = useQuery({
-    queryKey: ["guest-documents"],
-    queryFn: () =>
-      apiJson<{ documents: { id: string; filename: string }[] }>(
-        "/api/guest/documents",
-      ),
-    enabled: isGuestResolved,
-  });
-
-  const contextLibraryDocs = user
-    ? documentsQuery.data?.documents
-    : isGuestResolved
-      ? guestDocumentsQuery.data?.documents
-      : undefined;
+  useEffect(() => {
+    if (!user || !effectiveChatId) return;
+    if (!chatDetailQuery.isError) return;
+    if (!isChatNotFoundError(chatDetailQuery.error)) return;
+    queryClient.removeQueries({ queryKey: ["chat", effectiveChatId] });
+    router.replace("/chat");
+  }, [
+    user,
+    effectiveChatId,
+    chatDetailQuery.isError,
+    chatDetailQuery.error,
+    queryClient,
+    router,
+  ]);
 
   const serverMessages = useMemo(() => {
     if (!user) return [];
@@ -159,6 +177,7 @@ export function ChatMain() {
     status,
     hasPendingSync,
     startSend,
+    moveThread,
     appendAssistantChunk,
     completeAssistant,
     failAssistant,
@@ -169,8 +188,21 @@ export function ChatMain() {
     hydrateFromServer: !!user && !!effectiveChatId && !!chatDetailQuery.data,
   });
 
+  const shouldSyncPendingThread = shouldPollPendingSync({
+    userId: user?.id,
+    chatId: effectiveChatId,
+    hasPendingSync,
+    status,
+  });
+
+  const chatDetailNotFound =
+    !!user &&
+    !!effectiveChatId &&
+    chatDetailQuery.isError &&
+    isChatNotFoundError(chatDetailQuery.error);
+
   useEffect(() => {
-    if (!user || !effectiveChatId || !hasPendingSync) return;
+    if (!effectiveChatId || !shouldSyncPendingThread || chatDetailNotFound) return;
 
     let cancelled = false;
     let attempts = 0;
@@ -188,7 +220,14 @@ export function ChatMain() {
               pageParam ? { before: pageParam } : {},
             ),
         });
+        if (cancelled) return;
       } catch (error) {
+        if (cancelled) return;
+        if (isChatNotFoundError(error)) {
+          queryClient.removeQueries({ queryKey: ["chat", effectiveChatId] });
+          router.replace("/chat");
+          return;
+        }
         console.error(error);
       }
     };
@@ -202,70 +241,13 @@ export function ChatMain() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [effectiveChatId, hasPendingSync, queryClient, user]);
-
-  const uploadDocMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const fd = new FormData();
-      fd.append("file", file);
-      if (effectiveChatId) {
-        fd.append("meta", JSON.stringify({ chatId: effectiveChatId }));
-      }
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        let message = text;
-        try {
-          const json = JSON.parse(text) as { error?: unknown };
-          if (typeof json.error === "string") message = json.error;
-        } catch {
-          /* keep response text */
-        }
-        throw new Error(message || `HTTP ${res.status}`);
-      }
-      return res.json() as Promise<{ document: { id: string } }>;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["documents"] });
-    },
-    onError: (error) => {
-      setSendError(error instanceof Error ? error.message : "Upload failed");
-    },
-  });
-
-  const uploadGuestDocMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/guest/documents", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        let message = text;
-        try {
-          const json = JSON.parse(text) as { error?: unknown };
-          if (typeof json.error === "string") message = json.error;
-        } catch {
-          /* keep response text */
-        }
-        throw new Error(message || `HTTP ${res.status}`);
-      }
-      return res.json() as Promise<{ document: { id: string } }>;
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["guest-documents"] });
-    },
-    onError: (error) => {
-      setSendError(error instanceof Error ? error.message : "Upload failed");
-    },
-  });
+  }, [
+    effectiveChatId,
+    queryClient,
+    router,
+    shouldSyncPendingThread,
+    chatDetailNotFound,
+  ]);
 
   const readFileAsBase64 = (file: File) =>
     new Promise<{ mimeType: string; base64: string; preview: string }>(
@@ -275,7 +257,7 @@ export function ChatMain() {
           const result = reader.result as string;
           const base64 = result.split(",")[1] ?? "";
           resolve({
-            mimeType: file.type || "application/octet-stream",
+            mimeType: file.type,
             base64,
             preview: URL.createObjectURL(file),
           });
@@ -285,30 +267,47 @@ export function ChatMain() {
       },
     );
 
+  const addValidatedImage = useCallback(async (file: File) => {
+    const err = assertImageFileClient(file);
+    if (err) {
+      setSendError(err);
+      return;
+    }
+    setSendError(null);
+    const image = await readFileAsBase64(file);
+    setPendingImages((previous) => {
+      for (const img of previous) {
+        URL.revokeObjectURL(img.preview);
+      }
+      return [image];
+    });
+  }, []);
+
   const handlePasteImage = useCallback(
     async (event: React.ClipboardEvent) => {
       const items = event.clipboardData?.items;
-      if (!items) return;
-      for (const item of items) {
-        if (!item.type.startsWith("image/")) continue;
-        const file = item.getAsFile();
+      if (!items?.length) return;
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        if (!item) continue;
+        const file = getClipboardImageFile(item);
         if (!file) continue;
         event.preventDefault();
-        const image = await readFileAsBase64(file);
-        setPendingImages((previous) => [...previous, image]);
+        await addValidatedImage(file);
+        break;
       }
     },
-    [],
+    [addValidatedImage],
   );
 
   const isBusy = status === "sending" || status === "streaming";
-  const messageContent = draft.trim() || "What do you see in this image?";
 
   const sendMessage = async () => {
     if (sendLockRef.current) return;
 
     const trimmedDraft = draft.trim();
-    if (!trimmedDraft && pendingImages.length === 0) return;
+    const hasImages = pendingImages.length > 0;
+    if (!trimmedDraft && !hasImages) return;
 
     if (!modelId && modelsQuery.data?.models?.length) {
       setModelId(modelsQuery.data.models[0]!.id);
@@ -316,12 +315,15 @@ export function ChatMain() {
 
     const currentModel =
       modelId || modelsQuery.data?.models?.[0]?.id || "openai:gpt-4o-mini";
-    const images =
-      pendingImages.length > 0
-        ? pendingImages.map(({ mimeType, base64 }) => ({ mimeType, base64 }))
-        : undefined;
+    const imagePayload = hasImages
+      ? pendingImages.map(({ mimeType, base64 }) => ({ mimeType, base64 }))
+      : undefined;
+    const sendParts = buildUserSendParts(trimmedDraft, hasImages);
 
     sendLockRef.current = true;
+    streamAbortRef.current?.abort();
+    const streamController = new AbortController();
+    streamAbortRef.current = streamController;
     setSendError(null);
     setDraft("");
     setPendingImages((previous) => {
@@ -333,6 +335,7 @@ export function ChatMain() {
 
     let assistantMessageId: string | null = null;
     let targetChatKey = chatKey;
+    let syncChatUrlToId: string | undefined;
 
     try {
       if (!user) {
@@ -343,8 +346,9 @@ export function ChatMain() {
           {
             userMessage: {
               id: userMessageId,
-              content: messageContent,
-              attachments: images,
+              content: sendParts.apiContent,
+              messageType: sendParts.messageType,
+              attachments: imagePayload,
               synced: true,
             },
             assistantMessage: { id: assistantMessageId, synced: true },
@@ -356,19 +360,19 @@ export function ChatMain() {
           ...messages.map(toGuestRequestMessage),
           {
             role: "user" as const,
-            content: messageContent,
-            images,
+            content: sendParts.apiContent,
+            images: imagePayload,
           },
         ];
 
         const response = await fetch("/api/guest/stream", {
           method: "POST",
           credentials: "include",
+          signal: streamController.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             modelId: currentModel,
             messages: guestHistory,
-            documentIds: selectedDocIds.length ? selectedDocIds : undefined,
           }),
         });
 
@@ -388,9 +392,35 @@ export function ChatMain() {
         });
 
         void queryClient.invalidateQueries({ queryKey: ["guest-quota"] });
-        setSelectedDocIds([]);
         return;
       }
+
+      const userMessageId = crypto.randomUUID();
+      assistantMessageId = crypto.randomUUID();
+
+      startSend({
+        userMessage: {
+          id: userMessageId,
+          content: sendParts.apiContent,
+          messageType: sendParts.messageType,
+          attachments: imagePayload,
+        },
+        assistantMessage: { id: assistantMessageId },
+      });
+      logDebugIngest({
+        sessionId: "d6f539",
+        runId: "initial-debug",
+        hypothesisId: "H2-H4",
+        location: "src/components/chat/chat-main.tsx:startSend",
+        message: "auth startSend dispatched",
+        data: {
+          chatKey,
+          effectiveChatId: effectiveChatId ?? null,
+          userMessageId,
+          assistantMessageId,
+          imageCount: imagePayload?.length ?? 0,
+        },
+      });
 
       let activeChatId = effectiveChatId;
 
@@ -403,45 +433,60 @@ export function ChatMain() {
         });
         activeChatId = created.chat.id;
         targetChatKey = getChatKey(user.id, activeChatId);
+        moveThread(chatKey, targetChatKey);
         upsertChatInListCache(queryClient, created.chat);
         primeNewChatDetailCache(queryClient, created.chat);
         setRoutingChatId(activeChatId);
-        router.replace(`/chat/${activeChatId}`);
+        syncChatUrlToId = activeChatId;
+        logDebugIngest({
+          sessionId: "d6f539",
+          runId: "initial-debug",
+          hypothesisId: "H3-H4",
+          location: "src/components/chat/chat-main.tsx:afterCreateChat",
+          message: "auth draft thread moved after chat creation",
+          data: {
+            previousChatKey: chatKey,
+            targetChatKey,
+            activeChatId,
+            movedFromDraft: chatKey === "auth:draft",
+          },
+        });
       } else {
         targetChatKey = getChatKey(user.id, activeChatId);
+        if (targetChatKey !== chatKey) {
+          moveThread(chatKey, targetChatKey);
+        }
       }
-
-      const userMessageId = crypto.randomUUID();
-      assistantMessageId = crypto.randomUUID();
-
-      startSend(
-        {
-          userMessage: {
-            id: userMessageId,
-            content: messageContent,
-            attachments: images,
-          },
-          assistantMessage: { id: assistantMessageId },
-        },
-        targetChatKey,
-      );
 
       const response = await fetch(
         `/api/chats/${activeChatId}/messages/stream`,
         {
           method: "POST",
           credentials: "include",
+          signal: streamController.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userMessageId,
             assistantMessageId,
-            content: messageContent,
+            content: sendParts.apiContent,
             modelId: currentModel,
-            images,
-            documentIds: selectedDocIds.length ? selectedDocIds : undefined,
+            images: imagePayload,
           }),
         },
       );
+      logDebugIngest({
+        sessionId: "d6f539",
+        runId: "initial-debug",
+        hypothesisId: "H1-H4",
+        location: "src/components/chat/chat-main.tsx:streamResponse",
+        message: "auth stream response received",
+        data: {
+          activeChatId,
+          targetChatKey,
+          status: response.status,
+          ok: response.ok,
+        },
+      });
 
       if (!response.ok) {
         const text = await response.text();
@@ -454,20 +499,34 @@ export function ChatMain() {
         onDone: () => completeAssistant(assistantMessageId!, targetChatKey),
       });
 
-      await queryClient.fetchInfiniteQuery({
-        queryKey: ["chat", activeChatId],
-        initialPageParam: undefined as string | undefined,
-        queryFn: ({ pageParam }) =>
-          fetchChatDetailPage(
-            activeChatId!,
-            pageParam ? { before: pageParam } : {},
-          ),
-      });
-      await queryClient.invalidateQueries({ queryKey: ["chats"] });
-      setSelectedDocIds([]);
+      if (syncChatUrlToId) {
+        router.replace(`/chat/${syncChatUrlToId}`);
+      }
+
+      reconcileAuthChatAfterStream({ queryClient });
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        if (assistantMessageId) {
+          failAssistant(assistantMessageId, "", targetChatKey);
+        }
+        return;
+      }
       console.error(error);
       const message = toUserFacingChatErrorMessage(error);
+      logDebugIngest({
+        sessionId: "d6f539",
+        runId: "initial-debug",
+        hypothesisId: "H1-H4",
+        location: "src/components/chat/chat-main.tsx:sendError",
+        message: "auth sendMessage caught error",
+        data: {
+          targetChatKey,
+          assistantMessageId,
+          errorMessage: message,
+          rawError:
+            error instanceof Error ? error.message : "unknown non-error value",
+        },
+      });
       setSendError(message);
       if (assistantMessageId) {
         failAssistant(assistantMessageId, message, targetChatKey);
@@ -537,38 +596,6 @@ export function ChatMain() {
         onLoadOlder={() => void chatDetailQuery.fetchNextPage()}
       />
 
-      {contextLibraryDocs && (
-        <div className="border-sidebar-border flex flex-wrap gap-2 border-t px-4 py-2">
-          <span className="text-muted-foreground w-full text-xs">
-            Context documents
-          </span>
-          {contextLibraryDocs.map((document) => (
-            <label
-              key={document.id}
-              className="flex cursor-pointer items-center gap-2 text-xs"
-            >
-              <input
-                type="checkbox"
-                checked={selectedDocIds.includes(document.id)}
-                onChange={(event) => {
-                  setSelectedDocIds((previous) =>
-                    event.target.checked
-                      ? [...previous, document.id]
-                      : previous.filter((id) => id !== document.id),
-                  );
-                }}
-              />
-              <span className="truncate">{document.filename}</span>
-            </label>
-          ))}
-          {contextLibraryDocs.length === 0 && (
-            <span className="text-muted-foreground text-xs">
-              Upload a .txt or .pdf below to use as context.
-            </span>
-          )}
-        </div>
-      )}
-
       <div className="border-sidebar-border bg-background/80 supports-backdrop-filter:bg-background/60 sticky bottom-0 border-t p-4 backdrop-blur">
         {pendingImages.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
@@ -613,7 +640,7 @@ export function ChatMain() {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onPaste={handlePasteImage}
-            placeholder="Message... (paste images)"
+            placeholder="Message… paste an image or attach (PNG, JPEG, WebP, GIF)"
             className="min-h-[96px] resize-none"
             disabled={isBusy || isCreatingChat}
             onKeyDown={(event) => {
@@ -627,27 +654,16 @@ export function ChatMain() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={CHAT_IMAGE_ACCEPT_ATTR}
               className="hidden"
               onChange={async (event) => {
                 const file = event.target.files?.[0];
                 if (file) {
-                  const image = await readFileAsBase64(file);
-                  setPendingImages((previous) => [...previous, image]);
-                }
-                event.target.value = "";
-              }}
-            />
-            <input
-              ref={docInputRef}
-              type="file"
-              accept=".txt,.pdf,text/plain,application/pdf"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  if (user) uploadDocMutation.mutate(file);
-                  else uploadGuestDocMutation.mutate(file);
+                  try {
+                    await addValidatedImage(file);
+                  } catch {
+                    setSendError("Could not read image file.");
+                  }
                 }
                 event.target.value = "";
               }}
@@ -662,23 +678,6 @@ export function ChatMain() {
               title="Attach image"
             >
               <ImageIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              disabled={
-                isBusy ||
-                isCreatingChat ||
-                (user
-                  ? uploadDocMutation.isPending
-                  : uploadGuestDocMutation.isPending)
-              }
-              onClick={() => docInputRef.current?.click()}
-              aria-label="Upload document"
-              title="Upload .txt or .pdf"
-            >
-              <Paperclip className="h-4 w-4" />
             </Button>
             <Button
               className="ml-auto gap-2"

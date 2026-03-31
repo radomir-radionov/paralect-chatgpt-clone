@@ -1,13 +1,14 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
 import { requireUser } from "@/server/auth/session";
 import { getDb } from "@/server/db";
-import { chats, documents, messages } from "@/server/db/schema";
+import { chats, messages } from "@/server/db/schema";
 import { sseResponse } from "@/server/http/sse";
 import { streamLlmCompletion } from "@/server/llm/stream";
 import { dbMessagesToLlm } from "@/server/messages/to-llm";
 import { rateLimitOrThrow } from "@/server/rate-limit";
+import { USER_IMAGE_PROMPT } from "@/lib/chat-prompts";
 import { streamUserMessageSchema } from "@/lib/validation/chat";
 
 const AUTH_STREAM_WINDOW_MS = 60_000;
@@ -15,6 +16,7 @@ const AUTH_STREAM_MAX = 60;
 
 function computeChatTitle(currentTitle: string, firstMessageContent: string) {
   if (currentTitle !== "New chat") return currentTitle;
+  if (firstMessageContent === USER_IMAGE_PROMPT) return "Image";
   const slice = firstMessageContent.slice(0, 60);
   return slice + (firstMessageContent.length > 60 ? "…" : "");
 }
@@ -32,7 +34,11 @@ export async function POST(
     );
     await ensureProfile(user.id, user.email);
     const { chatId } = await context.params;
-    const body = streamUserMessageSchema.parse(await request.json());
+    const raw = await request.text();
+    if (!raw.trim()) {
+      return Response.json({ error: "Empty body" }, { status: 400 });
+    }
+    const body = streamUserMessageSchema.parse(JSON.parse(raw));
     const db = getDb();
 
     const chat = await db.query.chats.findFirst({
@@ -41,8 +47,6 @@ export async function POST(
     if (!chat) {
       return Response.json({ error: "Not found" }, { status: 404 });
     }
-
-    const contextText = await loadDocumentContext(user.id, body.documentIds);
 
     const attachmentPayload = body.images?.length
       ? body.images.map((img) => ({
@@ -80,7 +84,6 @@ export async function POST(
     const stream = streamLlmCompletion({
       modelId: body.modelId,
       messages: llmMessages,
-      context: contextText,
     });
 
     return sseResponse(stream, async (fullText) => {
@@ -99,18 +102,6 @@ export async function POST(
   } catch (e) {
     return handleError(e);
   }
-}
-
-async function loadDocumentContext(userId: string, ids?: string[]) {
-  if (!ids?.length) return undefined;
-  const db = getDb();
-  const rows = await db.query.documents.findMany({
-    where: and(eq(documents.userId, userId), inArray(documents.id, ids)),
-  });
-  if (!rows.length) return undefined;
-  return rows
-    .map((r) => `--- ${r.filename} ---\n${r.textContent}`)
-    .join("\n\n");
 }
 
 function handleError(e: unknown) {

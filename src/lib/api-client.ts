@@ -1,3 +1,5 @@
+import { logDebugIngest } from "@/lib/debug-ingest";
+
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -9,6 +11,9 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const text = await res.text();
   if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error("Not found");
+    }
     let message = text;
     try {
       const j = JSON.parse(text) as { error?: unknown };
@@ -70,6 +75,18 @@ export async function parseSseStream(
 ): Promise<void> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("No response body");
+  logDebugIngest({
+    sessionId: "d6f539",
+    runId: "initial-debug",
+    hypothesisId: "H1",
+    location: "src/lib/api-client.ts:67",
+    message: "parseSseStream started",
+    data: {
+      url: response.url,
+      status: response.status,
+      ok: response.ok,
+    },
+  });
   const decoder = new TextDecoder();
   let buffer = "";
   let sawDone = false;
@@ -92,12 +109,34 @@ export async function parseSseStream(
         options.onDone?.();
       }
       if (data.type === "error") {
+        logDebugIngest({
+          sessionId: "d6f539",
+          runId: "initial-debug",
+          hypothesisId: "H1",
+          location: "src/lib/api-client.ts:94",
+          message: "parseSseStream received error event",
+          data: {
+            url: response.url,
+            errorMessage: data.message ?? "Stream error",
+          },
+        });
         throw new Error(data.message ?? "Stream error");
       }
     }
   }
 
   if (!sawDone) {
+    logDebugIngest({
+      sessionId: "d6f539",
+      runId: "initial-debug",
+      hypothesisId: "H1",
+      location: "src/lib/api-client.ts:100",
+      message: "parseSseStream ended without done",
+      data: {
+        url: response.url,
+        bufferLength: buffer.length,
+      },
+    });
     throw new Error("Streaming interrupted before completion. Please try again.");
   }
 }
