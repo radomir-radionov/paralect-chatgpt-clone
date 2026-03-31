@@ -2,6 +2,8 @@
 
 Full-stack chat app with **streaming** assistant replies, **multi-chat** sidebar persisted in **Postgres** for **signed-in** users, **Supabase Auth**, **anonymous quota** (3 free prompts), **cross-tab sidebar sync** via Supabase Realtime broadcast, **image** paste/attach, **document** upload (.txt / .pdf) for **injected context** (signed-in **and** guests: guests use `/api/guest/documents` scoped to the anonymous session, separate from the signed-in document library), and **guest chat** that streams in the browser only (no persisted `chats` / `messages` or sidebar history after reload).
 
+https://www.loom.com/share/8efa220c030a4861a29f4a0106994a43
+
 ## Stack
 
 | Layer    | Choice |
