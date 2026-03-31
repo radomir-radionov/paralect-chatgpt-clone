@@ -20,6 +20,7 @@ export async function GET(
     const user = await requireUser(request);
     await ensureProfile(user.id, user.email);
     const { chatId } = await context.params;
+
     const url = new URL(request.url);
     const parsed = querySchema.safeParse({
       limit: url.searchParams.get("limit") ?? undefined,
@@ -28,7 +29,9 @@ export async function GET(
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
+
     const { limit, before } = parsed.data;
+
     const db = getDb();
     const chat = await db.query.chats.findFirst({
       where: and(eq(chats.id, chatId), eq(chats.userId, user.id)),
@@ -37,28 +40,33 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const baseWhere =
-      before === undefined
-        ? eq(messages.chatId, chatId)
-        : await (async () => {
-            const anchor = await db.query.messages.findFirst({
-              where: and(eq(messages.id, before), eq(messages.chatId, chatId)),
-            });
-            if (!anchor?.createdAt) {
-              throw Object.assign(new Error("Invalid cursor"), { status: 400 });
-            }
-            const anchorAt = anchor.createdAt;
-            return and(
-              eq(messages.chatId, chatId),
-              or(
-                lt(messages.createdAt, anchorAt),
-                and(
-                  eq(messages.createdAt, anchorAt),
-                  lt(messages.id, anchor.id),
-                ),
-              ),
-            );
-          })();
+    let baseWhere = eq(messages.chatId, chatId);
+
+    if (before !== undefined) {
+      const anchor = await db.query.messages.findFirst({
+        where: and(eq(messages.id, before), eq(messages.chatId, chatId)),
+      });
+
+      if (!anchor?.createdAt) {
+        throw Object.assign(new Error("Invalid cursor"), { status: 400 });
+      }
+
+      const anchorAt = anchor.createdAt;
+
+      const cursorWhere = and(
+        eq(messages.chatId, chatId),
+        or(
+          lt(messages.createdAt, anchorAt),
+          and(
+            eq(messages.createdAt, anchorAt),
+            lt(messages.id, anchor.id),
+          ),
+        ),
+      );
+
+      // `and` can be typed as returning `SQL | undefined`; fall back to baseWhere if it ever did.
+      baseWhere = cursorWhere ?? baseWhere;
+    }
 
     const rowsDesc = await db.query.messages.findMany({
       where: baseWhere,
@@ -124,13 +132,48 @@ export async function DELETE(
     await ensureProfile(user.id, user.email);
     const { chatId } = await context.params;
     const db = getDb();
-    const [deleted] = await db
-      .delete(chats)
-      .where(and(eq(chats.id, chatId), eq(chats.userId, user.id)))
-      .returning({ id: chats.id });
-    if (!deleted) {
+
+    const result = await db.transaction(async (tx) => {
+      const userChats = await tx.query.chats.findMany({
+        where: eq(chats.userId, user.id),
+        columns: { id: true },
+      });
+
+      if (userChats.length === 0) {
+        return { kind: "not_found" as const, deleted: null as null };
+      }
+
+      if (userChats.length === 1) {
+        const [onlyChat] = userChats;
+        if (onlyChat?.id === chatId) {
+          return { kind: "forbidden" as const, deleted: null as null };
+        }
+        return { kind: "not_found" as const, deleted: null as null };
+      }
+
+      const [deleted] = await tx
+        .delete(chats)
+        .where(and(eq(chats.id, chatId), eq(chats.userId, user.id)))
+        .returning({ id: chats.id });
+
+      if (!deleted) {
+        return { kind: "not_found" as const, deleted: null as null };
+      }
+
+      return { kind: "ok" as const, deleted };
+    });
+
+    if (result.kind === "forbidden") {
+      return NextResponse.json(
+        { error: "At least one chat must exist" },
+        { status: 409 },
+      );
+    }
+
+    if (result.kind === "not_found" || !result.deleted) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
     after(() => {
       void broadcastChatEvent(user.id, "chat_deleted", { chatId });
     });

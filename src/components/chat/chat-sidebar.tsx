@@ -30,6 +30,7 @@ export type ChatSidebarProps = {
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
   onSignOut: () => void;
+  canDeleteChat?: (id: string) => boolean;
 };
 
 function ChatSidebarInner({
@@ -45,6 +46,7 @@ function ChatSidebarInner({
   onNewChat,
   onDeleteChat,
   onSignOut,
+  canDeleteChat,
 }: ChatSidebarProps) {
   return (
     <div className="flex h-full flex-col gap-2 p-3">
@@ -103,6 +105,8 @@ function ChatSidebarInner({
             !chatsError &&
             chats?.map((c) => {
               const isDeleting = deletingChatId === c.id;
+              const isDeletable =
+                !canDeleteChat || canDeleteChat(c.id);
               return (
                 <div
                   key={c.id}
@@ -121,21 +125,23 @@ function ChatSidebarInner({
                   >
                     <span className="truncate">{c.title}</span>
                   </Link>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-                    onClick={() => onDeleteChat(c.id)}
-                    disabled={isDeleting}
-                    aria-label="Delete chat"
-                  >
-                    {isDeleting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
+                  {isDeletable && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={() => onDeleteChat(c.id)}
+                      disabled={isDeleting}
+                      aria-label="Delete chat"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               );
             })}

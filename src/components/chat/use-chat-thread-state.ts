@@ -23,6 +23,19 @@ import {
 import { threadSnapshotStore } from "@/components/chat/thread-snapshot-store";
 import { logDebugIngest } from "@/lib/debug-ingest";
 
+const hydrationIngestLogTimes = new Map<string, number>();
+const HYDRATION_INGEST_DEDUPE_MS = 4_000;
+
+function shouldLogHydrationIngest(signature: string) {
+  const now = Date.now();
+  const lastLoggedAt = hydrationIngestLogTimes.get(signature);
+  if (lastLoggedAt !== undefined && now - lastLoggedAt < HYDRATION_INGEST_DEDUPE_MS) {
+    return false;
+  }
+  hydrationIngestLogTimes.set(signature, now);
+  return true;
+}
+
 type UseChatThreadStateOptions = {
   chatKey: string;
   mode: ThreadMode;
@@ -230,19 +243,24 @@ export function useChatThreadState({
 
   useEffect(() => {
     if (!hydrateFromServer) return;
-    logDebugIngest({
-      sessionId: "d6f539",
-      runId: "initial-debug",
-      hypothesisId: "H2-H4",
-      location: "src/components/chat/use-chat-thread-state.ts:204",
-      message: "hydrateFromServer dispatching",
-      data: {
-        chatKey,
-        serverMessageCount: serverMessages.length,
-        localMessageCount: latestStateRef.current.messages.length,
-        localStatus: latestStateRef.current.status,
-      },
-    });
+    const latestServerMessageId = serverMessages.at(-1)?.id ?? "none";
+    const hydrationSignature = `${chatKey}:${serverMessages.length}:${latestServerMessageId}`;
+    if (shouldLogHydrationIngest(hydrationSignature)) {
+      logDebugIngest({
+        sessionId: "d6f539",
+        runId: "initial-debug",
+        hypothesisId: "H2-H4",
+        location: "src/components/chat/use-chat-thread-state.ts:hydrateFromServer",
+        message: "hydrateFromServer dispatching",
+        data: {
+          chatKey,
+          serverMessageCount: serverMessages.length,
+          localMessageCount: latestStateRef.current.messages.length,
+          localStatus: latestStateRef.current.status,
+          hydrationSignature,
+        },
+      });
+    }
     dispatch({
       type: "hydrateFromServer",
       chatKey,

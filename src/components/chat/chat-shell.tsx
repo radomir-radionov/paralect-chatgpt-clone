@@ -7,7 +7,10 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
@@ -22,6 +25,7 @@ import {
 } from "@/lib/chats-cache";
 import { invalidateChatsListDebounced } from "@/lib/invalidate-chats-list";
 import type { ChatSummary } from "@/lib/chat-api";
+import { logDebugIngest } from "@/lib/debug-ingest";
 
 type ChatRow = ChatSummary;
 
@@ -44,6 +48,17 @@ type DeleteMutationContext = {
   navigatedAway: boolean;
 };
 
+type RouteSyncIntent =
+  | {
+      kind: "select";
+      chatId: string;
+      navigation: "replace" | "push";
+    }
+  | {
+      kind: "clear";
+      navigation: { method: "replace" | "push"; href: string };
+    };
+
 export function getChatShellLayoutClasses() {
   return {
     root: "bg-background flex min-h-[100dvh] flex-col md:h-[100dvh] md:flex-row md:overflow-hidden",
@@ -60,6 +75,10 @@ export function ChatShell({ children }: { children: ReactNode }) {
     useChatLayout();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [pendingRouteSync, setPendingRouteSync] = useState<RouteSyncIntent | null>(
+    null,
+  );
+  const lastAutoSelectedChatIdRef = useRef<string | null>(null);
 
   const selectedChatId = chatId ?? routingChatId;
   const isGuestResolved = !authLoading && !user;
@@ -79,6 +98,8 @@ export function ChatShell({ children }: { children: ReactNode }) {
     enabled: !!user,
   });
 
+  const totalChats = chatsQuery.data?.chats.length ?? 0;
+
   const createChatMutation = useMutation({
     mutationFn: async () => {
       const res = await apiJson<{ chat: ChatRow }>("/api/chats", {
@@ -90,8 +111,11 @@ export function ChatShell({ children }: { children: ReactNode }) {
     onSuccess: (chat) => {
       upsertChatInListCache(queryClient, chat);
       primeNewChatDetailCache(queryClient, chat);
-      setRoutingChatId(chat.id);
-      router.replace(`/chat/${chat.id}`);
+      setPendingRouteSync({
+        kind: "select",
+        chatId: chat.id,
+        navigation: "replace",
+      });
     },
   });
 
@@ -115,11 +139,18 @@ export function ChatShell({ children }: { children: ReactNode }) {
       removeChatFromListCache(queryClient, id);
       const current = chatId ?? routingChatId;
       const navigatedAway = current === id;
+      const fallbackChatId =
+        previousChats?.chats.find((chat) => chat.id !== id)?.id;
       if (navigatedAway) {
         void queryClient.cancelQueries({ queryKey: ["chat", id] });
         queryClient.removeQueries({ queryKey: ["chat", id] });
-        setRoutingChatId(undefined);
-        router.push("/chat");
+        setPendingRouteSync({
+          kind: "clear",
+          navigation: {
+            method: "push",
+            href: fallbackChatId ? `/chat/${fallbackChatId}` : "/chat",
+          },
+        });
       }
       return { previousChats, navigatedAway };
     },
@@ -160,6 +191,75 @@ export function ChatShell({ children }: { children: ReactNode }) {
     chatsQuery.data === undefined &&
     !chatsQuery.isError;
 
+  useEffect(() => {
+    if (!pendingRouteSync) return;
+
+    if (pendingRouteSync.kind === "select") {
+      setRoutingChatId(pendingRouteSync.chatId);
+      const href = `/chat/${pendingRouteSync.chatId}`;
+      if (pendingRouteSync.navigation === "replace") {
+        router.replace(href);
+      } else {
+        router.push(href);
+      }
+    } else {
+      setRoutingChatId(undefined);
+      if (pendingRouteSync.navigation.method === "replace") {
+        router.replace(pendingRouteSync.navigation.href);
+      } else {
+        router.push(pendingRouteSync.navigation.href);
+      }
+    }
+
+    setPendingRouteSync(null);
+  }, [pendingRouteSync, router, setRoutingChatId]);
+
+  // When a signed-in user has chats but no chat is selected yet (e.g. first login),
+  // automatically select the most recent chat so the main pane is bound to a real chat id
+  // before the first message is sent.
+  useEffect(() => {
+    if (!user || authLoading) return;
+    if (selectedChatId) return;
+    const chats = chatsQuery.data?.chats;
+    if (!chats?.length) return;
+
+    const firstChatId = chats[0]!.id;
+    if (
+      routingChatId === firstChatId ||
+      lastAutoSelectedChatIdRef.current === firstChatId
+    ) {
+      return;
+    }
+
+    lastAutoSelectedChatIdRef.current = firstChatId;
+    logDebugIngest({
+      sessionId: "2fed9e",
+      runId: "post-fix",
+      hypothesisId: "H1",
+      location: "src/components/chat/chat-shell.tsx:autoSelectFirstChatEffect",
+      message: "ChatShell auto-select scheduling route sync",
+      data: {
+        selectedChatId,
+        routingChatId,
+        firstChatId,
+        totalChats: chats.length,
+      },
+    });
+    setPendingRouteSync({
+      kind: "select",
+      chatId: firstChatId,
+      navigation: "replace",
+    });
+  }, [
+    user,
+    authLoading,
+    selectedChatId,
+    chatsQuery.data?.chats,
+    routingChatId,
+    router,
+    setRoutingChatId,
+  ]);
+
   const sidebarProps = useMemo(
     () => ({
       user,
@@ -172,7 +272,11 @@ export function ChatShell({ children }: { children: ReactNode }) {
       createPending: createChatMutation.isPending,
       deletingChatId,
       onNewChat: handleNewChat,
-      onDeleteChat: (id: string) => deleteChatMutation.mutate(id),
+      canDeleteChat: () => totalChats > 1,
+      onDeleteChat: (id: string) => {
+        if (totalChats <= 1) return;
+        deleteChatMutation.mutate(id);
+      },
       onSignOut: signOut,
     }),
     // Prefer stable primitives over mutation object identity for memoization.
@@ -187,6 +291,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
       quotaQuery.data?.limit,
       createChatMutation.isPending,
       deletingChatId,
+      totalChats,
       handleNewChat,
       deleteChatMutation.mutate,
       signOut,

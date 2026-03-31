@@ -36,19 +36,9 @@ export default function LoginPage() {
       });
       const data = (await res.json()) as {
         error?: string;
-        needsEmailConfirmation?: boolean;
       };
       if (!res.ok) {
         throw new Error(data.error ?? "Auth failed");
-      }
-      if (mode === "signup" && data.needsEmailConfirmation) {
-        setMode("signin");
-        setPassword("");
-        setFeedback({
-          type: "info",
-          text: "Check your email to confirm your account, then sign in here.",
-        });
-        return;
       }
       await queryClient.prefetchQuery({
         queryKey: ["chats"],
@@ -67,7 +57,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="bg-background flex min-h-[100dvh] flex-col items-center justify-center px-4">
+    <div className="bg-background flex min-h-dvh flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6 rounded-xl border p-8 shadow-sm">
         <div className="space-y-1 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">

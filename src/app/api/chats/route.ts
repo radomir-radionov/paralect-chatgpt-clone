@@ -12,11 +12,23 @@ export async function GET(request: Request) {
     const user = await requireUser(request);
     await ensureProfile(user.id, user.email);
     const db = getDb();
-    const rows = await db.query.chats.findMany({
+    let rows = await db.query.chats.findMany({
       where: eq(chats.userId, user.id),
       orderBy: [desc(chats.updatedAt)],
       limit: 100,
     });
+    if (rows.length === 0) {
+      const [created] = await db
+        .insert(chats)
+        .values({
+          userId: user.id,
+          title: "New chat",
+        })
+        .returning();
+      if (created) {
+        rows = [created];
+      }
+    }
     return NextResponse.json({ chats: rows });
   } catch (e) {
     return handleError(e);

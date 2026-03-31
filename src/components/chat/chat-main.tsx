@@ -68,6 +68,288 @@ function buildUserSendParts(trimmed: string, hasImages: boolean) {
   return { apiContent: trimmed, messageType: "text" as const };
 }
 
+type SendContext = {
+  userMessageId: string;
+  assistantMessageId: string;
+  sendParts: ReturnType<typeof buildUserSendParts>;
+  imagePayload: { mimeType: string; base64: string }[] | undefined;
+  currentModel: string;
+};
+
+function buildSendContext({
+  draft,
+  pendingImages,
+  modelId,
+  modelsQuery,
+}: {
+  draft: string;
+  pendingImages: { mimeType: string; base64: string; preview: string }[];
+  modelId: string;
+  modelsQuery: {
+    data: { models: { id: string; label: string }[] } | undefined;
+  };
+}): SendContext {
+  const trimmedDraft = draft.trim();
+  const hasImages = pendingImages.length > 0;
+
+  const imagePayload = hasImages
+    ? pendingImages.map(({ mimeType, base64 }) => ({ mimeType, base64 }))
+    : undefined;
+
+  const sendParts = buildUserSendParts(trimmedDraft, hasImages);
+
+  const currentModel =
+    modelId || modelsQuery.data?.models?.[0]?.id || "openai:gpt-4o-mini";
+
+  return {
+    userMessageId: crypto.randomUUID(),
+    assistantMessageId: crypto.randomUUID(),
+    sendParts,
+    imagePayload,
+    currentModel,
+  };
+}
+
+async function streamAssistantResponse(
+  response: Response,
+  assistantMessageId: string,
+  targetChatKey: string,
+  appendAssistantChunk: (
+    assistantId: string,
+    chunk: string,
+    chatKey: string,
+  ) => void,
+  completeAssistant: (assistantId: string, chatKey: string) => void,
+) {
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(parseChatErrorResponseText(text, response.status));
+  }
+
+  await parseSseStream(response, {
+    onToken: (chunk) =>
+      appendAssistantChunk(assistantMessageId, chunk, targetChatKey),
+    onDone: () => completeAssistant(assistantMessageId, targetChatKey),
+  });
+}
+
+async function sendGuestMessage(options: {
+  ctx: SendContext;
+  messages: ChatThreadMessage[];
+  streamController: AbortController;
+  startSend: ReturnType<typeof useChatThreadState>["startSend"];
+  appendAssistantChunk: ReturnType<
+    typeof useChatThreadState
+  >["appendAssistantChunk"];
+  completeAssistant: ReturnType<typeof useChatThreadState>["completeAssistant"];
+  queryClient: ReturnType<typeof useQueryClient>;
+}) {
+  const {
+    ctx,
+    messages,
+    streamController,
+    startSend,
+    appendAssistantChunk,
+    completeAssistant,
+    queryClient,
+  } = options;
+
+  const { userMessageId, assistantMessageId, sendParts, imagePayload, currentModel } =
+    ctx;
+
+  const targetChatKey = "guest:default";
+
+  startSend(
+    {
+      userMessage: {
+        id: userMessageId,
+        content: sendParts.apiContent,
+        messageType: sendParts.messageType,
+        attachments: imagePayload,
+        synced: true,
+      },
+      assistantMessage: { id: assistantMessageId, synced: true },
+    },
+    targetChatKey,
+  );
+
+  const guestHistory = [
+    ...messages.map(toGuestRequestMessage),
+    {
+      role: "user" as const,
+      content: sendParts.apiContent,
+      images: imagePayload,
+    },
+  ];
+
+  const response = await fetch("/api/guest/stream", {
+    method: "POST",
+    credentials: "include",
+    signal: streamController.signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      modelId: currentModel,
+      messages: guestHistory,
+    }),
+  });
+
+  await streamAssistantResponse(
+    response,
+    assistantMessageId,
+    targetChatKey,
+    appendAssistantChunk,
+    completeAssistant,
+  );
+
+  void queryClient.invalidateQueries({ queryKey: ["guest-quota"] });
+}
+
+async function sendAuthMessage(options: {
+  ctx: SendContext;
+  user: NonNullable<ReturnType<typeof useChatLayout>["user"]>;
+  effectiveChatId: string | undefined;
+  chatKey: string;
+  streamController: AbortController;
+  startSend: ReturnType<typeof useChatThreadState>["startSend"];
+  moveThread: ReturnType<typeof useChatThreadState>["moveThread"];
+  queryClient: ReturnType<typeof useQueryClient>;
+  router: ReturnType<typeof useRouter>;
+  setRoutingChatId: (id: string | undefined) => void;
+  appendAssistantChunk: ReturnType<
+    typeof useChatThreadState
+  >["appendAssistantChunk"];
+  completeAssistant: ReturnType<typeof useChatThreadState>["completeAssistant"];
+}) {
+  const {
+    ctx,
+    user,
+    effectiveChatId,
+    chatKey,
+    streamController,
+    startSend,
+    moveThread,
+    queryClient,
+    router,
+    setRoutingChatId,
+    appendAssistantChunk,
+    completeAssistant,
+  } = options;
+
+  const {
+    userMessageId,
+    assistantMessageId,
+    sendParts,
+    imagePayload,
+    currentModel,
+  } = ctx;
+
+  startSend({
+    userMessage: {
+      id: userMessageId,
+      content: sendParts.apiContent,
+      messageType: sendParts.messageType,
+      attachments: imagePayload,
+    },
+    assistantMessage: { id: assistantMessageId },
+  });
+  logDebugIngest({
+    sessionId: "d6f539",
+    runId: "initial-debug",
+    hypothesisId: "H2-H4",
+    location: "src/components/chat/chat-main.tsx:startSend",
+    message: "auth startSend dispatched",
+    data: {
+      chatKey,
+      effectiveChatId: effectiveChatId ?? null,
+      userMessageId,
+      assistantMessageId,
+      imageCount: imagePayload?.length ?? 0,
+    },
+  });
+
+  let activeChatId = effectiveChatId;
+  let targetChatKey = chatKey;
+  let syncChatUrlToId: string | undefined;
+
+  if (!activeChatId) {
+    const created = await apiJson<{ chat: ChatRow }>("/api/chats", {
+      method: "POST",
+      body: JSON.stringify({
+        title: sendParts.apiContent ? sendParts.apiContent.slice(0, 80) : undefined,
+      }),
+    });
+    activeChatId = created.chat.id;
+    targetChatKey = getChatKey(user.id, activeChatId);
+    moveThread(chatKey, targetChatKey);
+    upsertChatInListCache(queryClient, created.chat);
+    primeNewChatDetailCache(queryClient, created.chat);
+    setRoutingChatId(activeChatId);
+    syncChatUrlToId = activeChatId;
+    logDebugIngest({
+      sessionId: "d6f539",
+      runId: "initial-debug",
+      hypothesisId: "H3-H4",
+      location: "src/components/chat/chat-main.tsx:afterCreateChat",
+      message: "auth draft thread moved after chat creation",
+      data: {
+        previousChatKey: chatKey,
+        targetChatKey,
+        activeChatId,
+        movedFromDraft: chatKey === "auth:draft",
+      },
+    });
+  } else {
+    targetChatKey = getChatKey(user.id, activeChatId);
+    if (targetChatKey !== chatKey) {
+      moveThread(chatKey, targetChatKey);
+    }
+  }
+
+  const response = await fetch(
+    `/api/chats/${activeChatId}/messages/stream`,
+    {
+      method: "POST",
+      credentials: "include",
+      signal: streamController.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessageId,
+        assistantMessageId,
+        content: sendParts.apiContent,
+        modelId: currentModel,
+        images: imagePayload,
+      }),
+    },
+  );
+  logDebugIngest({
+    sessionId: "d6f539",
+    runId: "initial-debug",
+    hypothesisId: "H1-H4",
+    location: "src/components/chat/chat-main.tsx:streamResponse",
+    message: "auth stream response received",
+    data: {
+      activeChatId,
+      targetChatKey,
+      status: response.status,
+      ok: response.ok,
+    },
+  });
+
+  await streamAssistantResponse(
+    response,
+    assistantMessageId,
+    targetChatKey,
+    appendAssistantChunk,
+    completeAssistant,
+  );
+
+  if (syncChatUrlToId) {
+    router.replace(`/chat/${syncChatUrlToId}`);
+  }
+
+  reconcileAuthChatAfterStream({ queryClient });
+}
+
 export function ChatMain() {
   const params = useParams<{ chatId?: string }>();
   const chatId = typeof params.chatId === "string" ? params.chatId : undefined;
@@ -76,7 +358,8 @@ export function ChatMain() {
   const effectiveChatId = chatId ?? routingChatId;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const isGuestResolved = !authLoading && !user;
+  const isAuthResolved = !authLoading;
+  const isGuestMode = isAuthResolved && !user;
   const [modelId, setModelId] = useState<string>("");
   const [draft, setDraft] = useState("");
   const [pendingImages, setPendingImages] = useState<
@@ -118,7 +401,7 @@ export function ChatMain() {
       apiJson<{ used: number; remaining: number; limit: number }>(
         "/api/guest/quota",
       ),
-    enabled: isGuestResolved,
+    enabled: isGuestMode,
   });
 
   const chatDetailQuery = useInfiniteQuery({
@@ -171,7 +454,11 @@ export function ChatMain() {
       );
   }, [chatDetailQuery.data?.pages, user]);
 
-  const chatKey = getChatKey(user?.id, effectiveChatId);
+  const chatKey = user
+    ? getChatKey(user.id, effectiveChatId)
+    : isAuthResolved
+      ? "guest:default"
+      : "auth:draft";
   const {
     messages,
     status,
@@ -183,7 +470,7 @@ export function ChatMain() {
     failAssistant,
   } = useChatThreadState({
     chatKey,
-    mode: user ? "auth" : "guest",
+    mode: user ? "auth" : isAuthResolved ? "guest" : "auth",
     serverMessages,
     hydrateFromServer: !!user && !!effectiveChatId && !!chatDetailQuery.data,
   });
@@ -303,6 +590,11 @@ export function ChatMain() {
   const isBusy = status === "sending" || status === "streaming";
 
   const sendMessage = async () => {
+    if (authLoading) {
+      setSendError("Resolving your account… please try again in a moment.");
+      return;
+    }
+
     if (sendLockRef.current) return;
 
     const trimmedDraft = draft.trim();
@@ -312,13 +604,6 @@ export function ChatMain() {
     if (!modelId && modelsQuery.data?.models?.length) {
       setModelId(modelsQuery.data.models[0]!.id);
     }
-
-    const currentModel =
-      modelId || modelsQuery.data?.models?.[0]?.id || "openai:gpt-4o-mini";
-    const imagePayload = hasImages
-      ? pendingImages.map(({ mimeType, base64 }) => ({ mimeType, base64 }))
-      : undefined;
-    const sendParts = buildUserSendParts(trimmedDraft, hasImages);
 
     sendLockRef.current = true;
     streamAbortRef.current?.abort();
@@ -333,184 +618,55 @@ export function ChatMain() {
       return [];
     });
 
-    let assistantMessageId: string | null = null;
-    let targetChatKey = chatKey;
-    let syncChatUrlToId: string | undefined;
+    const ctx = buildSendContext({
+      draft,
+      pendingImages,
+      modelId,
+      modelsQuery: {
+        data: modelsQuery.data,
+      },
+    });
 
     try {
-      if (!user) {
-        const userMessageId = crypto.randomUUID();
-        assistantMessageId = crypto.randomUUID();
-
-        startSend(
-          {
-            userMessage: {
-              id: userMessageId,
-              content: sendParts.apiContent,
-              messageType: sendParts.messageType,
-              attachments: imagePayload,
-              synced: true,
-            },
-            assistantMessage: { id: assistantMessageId, synced: true },
-          },
-          targetChatKey,
-        );
-
-        const guestHistory = [
-          ...messages.map(toGuestRequestMessage),
-          {
-            role: "user" as const,
-            content: sendParts.apiContent,
-            images: imagePayload,
-          },
-        ];
-
-        const response = await fetch("/api/guest/stream", {
-          method: "POST",
-          credentials: "include",
-          signal: streamController.signal,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            modelId: currentModel,
-            messages: guestHistory,
-          }),
+      if (isGuestMode) {
+        await sendGuestMessage({
+          ctx,
+          messages,
+          streamController,
+          startSend,
+          appendAssistantChunk,
+          completeAssistant,
+          queryClient,
         });
-
-        if (!response.ok) {
-          const errorBody = await response.json().catch(() => ({}));
-          throw new Error(
-            typeof errorBody.error === "string"
-              ? errorBody.error
-              : response.statusText,
-          );
-        }
-
-        await parseSseStream(response, {
-          onToken: (chunk) =>
-            appendAssistantChunk(assistantMessageId!, chunk, targetChatKey),
-          onDone: () => completeAssistant(assistantMessageId!, targetChatKey),
-        });
-
-        void queryClient.invalidateQueries({ queryKey: ["guest-quota"] });
         return;
       }
 
-      const userMessageId = crypto.randomUUID();
-      assistantMessageId = crypto.randomUUID();
-
-      startSend({
-        userMessage: {
-          id: userMessageId,
-          content: sendParts.apiContent,
-          messageType: sendParts.messageType,
-          attachments: imagePayload,
-        },
-        assistantMessage: { id: assistantMessageId },
+      await sendAuthMessage({
+        ctx,
+        user: user!,
+        effectiveChatId,
+        chatKey,
+        streamController,
+        startSend,
+        moveThread,
+        queryClient,
+        router,
+        setRoutingChatId,
+        appendAssistantChunk,
+        completeAssistant,
       });
-      logDebugIngest({
-        sessionId: "d6f539",
-        runId: "initial-debug",
-        hypothesisId: "H2-H4",
-        location: "src/components/chat/chat-main.tsx:startSend",
-        message: "auth startSend dispatched",
-        data: {
-          chatKey,
-          effectiveChatId: effectiveChatId ?? null,
-          userMessageId,
-          assistantMessageId,
-          imageCount: imagePayload?.length ?? 0,
-        },
-      });
-
-      let activeChatId = effectiveChatId;
-
-      if (!activeChatId) {
-        const created = await apiJson<{ chat: ChatRow }>("/api/chats", {
-          method: "POST",
-          body: JSON.stringify({
-            title: trimmedDraft ? trimmedDraft.slice(0, 80) : undefined,
-          }),
-        });
-        activeChatId = created.chat.id;
-        targetChatKey = getChatKey(user.id, activeChatId);
-        moveThread(chatKey, targetChatKey);
-        upsertChatInListCache(queryClient, created.chat);
-        primeNewChatDetailCache(queryClient, created.chat);
-        setRoutingChatId(activeChatId);
-        syncChatUrlToId = activeChatId;
-        logDebugIngest({
-          sessionId: "d6f539",
-          runId: "initial-debug",
-          hypothesisId: "H3-H4",
-          location: "src/components/chat/chat-main.tsx:afterCreateChat",
-          message: "auth draft thread moved after chat creation",
-          data: {
-            previousChatKey: chatKey,
-            targetChatKey,
-            activeChatId,
-            movedFromDraft: chatKey === "auth:draft",
-          },
-        });
-      } else {
-        targetChatKey = getChatKey(user.id, activeChatId);
-        if (targetChatKey !== chatKey) {
-          moveThread(chatKey, targetChatKey);
-        }
-      }
-
-      const response = await fetch(
-        `/api/chats/${activeChatId}/messages/stream`,
-        {
-          method: "POST",
-          credentials: "include",
-          signal: streamController.signal,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userMessageId,
-            assistantMessageId,
-            content: sendParts.apiContent,
-            modelId: currentModel,
-            images: imagePayload,
-          }),
-        },
-      );
-      logDebugIngest({
-        sessionId: "d6f539",
-        runId: "initial-debug",
-        hypothesisId: "H1-H4",
-        location: "src/components/chat/chat-main.tsx:streamResponse",
-        message: "auth stream response received",
-        data: {
-          activeChatId,
-          targetChatKey,
-          status: response.status,
-          ok: response.ok,
-        },
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(parseChatErrorResponseText(text, response.status));
-      }
-
-      await parseSseStream(response, {
-        onToken: (chunk) =>
-          appendAssistantChunk(assistantMessageId!, chunk, targetChatKey),
-        onDone: () => completeAssistant(assistantMessageId!, targetChatKey),
-      });
-
-      if (syncChatUrlToId) {
-        router.replace(`/chat/${syncChatUrlToId}`);
-      }
-
-      reconcileAuthChatAfterStream({ queryClient });
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        if (assistantMessageId) {
-          failAssistant(assistantMessageId, "", targetChatKey);
-        }
+      const isAbort =
+        error instanceof DOMException && error.name === "AbortError";
+      const targetChatKey = user
+        ? getChatKey(user.id, effectiveChatId)
+        : chatKey;
+
+      if (isAbort) {
+        failAssistant(ctx.assistantMessageId, "", targetChatKey);
         return;
       }
+
       console.error(error);
       const message = toUserFacingChatErrorMessage(error);
       logDebugIngest({
@@ -521,16 +677,14 @@ export function ChatMain() {
         message: "auth sendMessage caught error",
         data: {
           targetChatKey,
-          assistantMessageId,
+          assistantMessageId: ctx.assistantMessageId,
           errorMessage: message,
           rawError:
             error instanceof Error ? error.message : "unknown non-error value",
         },
       });
       setSendError(message);
-      if (assistantMessageId) {
-        failAssistant(assistantMessageId, message, targetChatKey);
-      }
+      failAssistant(ctx.assistantMessageId, message, targetChatKey);
     } finally {
       sendLockRef.current = false;
     }
@@ -541,13 +695,15 @@ export function ChatMain() {
       <header className="border-sidebar-border flex flex-wrap items-center gap-3 border-b px-4 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <h1 className="truncate text-lg font-semibold">
-            {user
-              ? chatDetailQuery.data?.pages?.[0]?.chat?.title ?? "New chat"
-              : "Guest chat"}
+            {authLoading
+              ? "Loading…"
+              : user
+                ? chatDetailQuery.data?.pages?.[0]?.chat?.title ?? "New chat"
+                : "Guest chat"}
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          {isGuestResolved && (
+          {isGuestMode && (
             <span className="text-muted-foreground text-xs">
               {quotaQuery.isLoading
                 ? "..."

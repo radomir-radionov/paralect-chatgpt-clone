@@ -15,18 +15,6 @@ export async function POST(request: Request) {
     const body = emailPasswordSchema.parse(await request.json());
     const data = await signUpWithGoTrue(body.email, body.password);
 
-    if (data.access_token && data.refresh_token) {
-      const supabase = await createRouteHandlerSupabase();
-      const { error } = await supabase.auth.setSession({
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-      });
-      if (error) {
-        return Response.json({ error: error.message }, { status: 400 });
-      }
-      return Response.json({ user: data.user, needsEmailConfirmation: false });
-    }
-
     if (isDuplicateEmailSignUpResponse(data.user)) {
       return Response.json(
         {
@@ -37,10 +25,22 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json({
-      user: data.user,
-      needsEmailConfirmation: true,
-    });
+    if (data.access_token && data.refresh_token) {
+      const supabase = await createRouteHandlerSupabase();
+      const { error } = await supabase.auth.setSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+      });
+      if (error) {
+        return Response.json({ error: error.message }, { status: 400 });
+      }
+      return Response.json({ user: data.user });
+    }
+
+    return Response.json(
+      { error: "Sign up failed to establish a session." },
+      { status: 400 },
+    );
   } catch (e) {
     if (e instanceof z.ZodError) {
       return Response.json({ error: e.message }, { status: 400 });
