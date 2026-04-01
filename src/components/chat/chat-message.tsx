@@ -54,10 +54,7 @@ export const ChatMessage = memo(function ChatMessage({
         )}
         {textToShow !== null && (
           <span
-            className={cn(
-              "whitespace-pre-wrap",
-              hasImages ? "mt-2 block" : "",
-            )}
+            className={cn("whitespace-pre-wrap", hasImages ? "mt-2 block" : "")}
           >
             {textToShow}
           </span>
