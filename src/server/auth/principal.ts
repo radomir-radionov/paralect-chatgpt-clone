@@ -75,3 +75,22 @@ export function assertUserPrincipal(
   error.status = 401;
   throw error;
 }
+
+/**
+ * Resolve and assert a user principal in one step **without** creating an
+ * anonymous session.  Use this for API routes that always require
+ * authentication – it avoids the database round-trip that
+ * {@link resolveRequestPrincipal} performs for unauthenticated requests and
+ * therefore cannot fail with a 500 when the DB is unreachable.
+ */
+export async function requireUserPrincipal(
+  request: Request,
+): Promise<UserRequestPrincipal> {
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    const error = new Error("Unauthorized") as Error & { status: number };
+    error.status = 401;
+    throw error;
+  }
+  return { role: "user", user };
+}

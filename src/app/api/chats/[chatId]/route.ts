@@ -2,10 +2,7 @@ import { and, desc, eq, lt, or } from "drizzle-orm";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
-import {
-  assertUserPrincipal,
-  resolveRequestPrincipal,
-} from "@/server/auth/principal";
+import { requireUserPrincipal } from "@/server/auth/principal";
 import { getDb } from "@/server/db";
 import { chats, messages } from "@/server/db/schema";
 import { broadcastChatEvent } from "@/server/realtime/broadcast";
@@ -20,10 +17,7 @@ export async function GET(
   context: { params: Promise<{ chatId: string }> },
 ) {
   try {
-    const principal = assertUserPrincipal(
-      await resolveRequestPrincipal(request),
-    );
-    const { user } = principal;
+    const { user } = await requireUserPrincipal(request);
     await ensureProfile(user.id, user.email);
     const { chatId } = await context.params;
 
@@ -107,10 +101,7 @@ export async function PATCH(
   context: { params: Promise<{ chatId: string }> },
 ) {
   try {
-    const principal = assertUserPrincipal(
-      await resolveRequestPrincipal(request),
-    );
-    const { user } = principal;
+    const { user } = await requireUserPrincipal(request);
     await ensureProfile(user.id, user.email);
     const { chatId } = await context.params;
     const body = patchSchema.parse(await request.json());
@@ -137,10 +128,7 @@ export async function DELETE(
   context: { params: Promise<{ chatId: string }> },
 ) {
   try {
-    const principal = assertUserPrincipal(
-      await resolveRequestPrincipal(request),
-    );
-    const { user } = principal;
+    const { user } = await requireUserPrincipal(request);
     await ensureProfile(user.id, user.email);
     const { chatId } = await context.params;
     const db = getDb();

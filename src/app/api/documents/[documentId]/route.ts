@@ -2,10 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
-import {
-  assertUserPrincipal,
-  resolveRequestPrincipal,
-} from "@/server/auth/principal";
+import { requireUserPrincipal } from "@/server/auth/principal";
 import { getDb } from "@/server/db";
 import { documents } from "@/server/db/schema";
 import { deleteUserDocumentObject } from "@/server/storage/documents";
@@ -15,10 +12,7 @@ export async function DELETE(
   context: { params: Promise<{ documentId: string }> },
 ) {
   try {
-    const principal = assertUserPrincipal(
-      await resolveRequestPrincipal(request),
-    );
-    const { user } = principal;
+    const { user } = await requireUserPrincipal(request);
     await ensureProfile(user.id, user.email);
     const { documentId } = await context.params;
     const db = getDb();

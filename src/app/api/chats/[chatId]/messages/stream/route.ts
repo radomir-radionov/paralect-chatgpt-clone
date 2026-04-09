@@ -1,10 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { ensureProfile } from "@/server/auth/profile";
-import {
-  assertUserPrincipal,
-  resolveRequestPrincipal,
-} from "@/server/auth/principal";
+import { requireUserPrincipal } from "@/server/auth/principal";
 import { getDb } from "@/server/db";
 import { chats, messages } from "@/server/db/schema";
 import { sseResponse } from "@/server/http/sse";
@@ -31,9 +28,7 @@ export async function POST(
   context: { params: Promise<{ chatId: string }> },
 ) {
   try {
-    const principal = assertUserPrincipal(
-      await resolveRequestPrincipal(request),
-    );
+    const principal = await requireUserPrincipal(request);
     const { user } = principal;
     rateLimitOrThrow(
       `chat-stream:${user.id}`,
