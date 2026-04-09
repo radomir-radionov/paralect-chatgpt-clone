@@ -1,10 +1,6 @@
 import type { RequestPrincipal } from "@/server/auth/principal";
 import type { AllowedDocumentMimeType } from "@/server/rag/constants";
 import {
-  ingestGuestDocument,
-  ingestUserDocument,
-} from "@/server/rag/ingest";
-import {
   retrieveContextForGuest,
   retrieveContextForUser,
 } from "@/server/rag/retrieve";
@@ -42,9 +38,15 @@ export async function retrieveContextForPrincipal(
   });
 }
 
+type IngestFn = (options: {
+  documentId: string;
+  buffer: Buffer;
+  mimeType: AllowedDocumentMimeType;
+}) => Promise<void>;
+
 type IngestDocumentForPrincipalDependencies = {
-  ingestUserDocument?: typeof ingestUserDocument;
-  ingestGuestDocument?: typeof ingestGuestDocument;
+  ingestUserDocument?: IngestFn;
+  ingestGuestDocument?: IngestFn;
 };
 
 export async function ingestDocumentForPrincipal(
@@ -56,6 +58,13 @@ export async function ingestDocumentForPrincipal(
   },
   dependencies: IngestDocumentForPrincipalDependencies = {},
 ): Promise<void> {
+  // Dynamic import to avoid pulling parse.ts (pdf-parse / pdfjs-dist) into
+  // routes that only need retrieveContextForPrincipal.  The top-level
+  // ensurePdfJsWorkerSrc() in parse.ts uses require.resolve which Turbopack
+  // replaces with a numeric module id, breaking the build for stream routes.
+  const { ingestUserDocument, ingestGuestDocument } = await import(
+    "@/server/rag/ingest"
+  );
   const runUserIngest =
     dependencies.ingestUserDocument ?? ingestUserDocument;
   const runGuestIngest =
