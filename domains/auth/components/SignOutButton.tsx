@@ -1,6 +1,6 @@
 "use client";
 
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
+import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 export function SignOutButton() {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import type { AuthenticatedUser } from "@domains/auth/types/auth.types";
 import { ChatInput } from "./ChatInput";
 import { ChatMessages } from "./ChatMessages";
 import { ChatSidebar } from "./ChatSidebar";
-import type { AuthenticatedUser, Conversation, Message } from "./chat-types";
+import type { Conversation, Message } from "@domains/chat/types/chat.types";
 
 type ChatLayoutProps = {
   user: AuthenticatedUser;

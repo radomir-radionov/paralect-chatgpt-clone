@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server-client";
+import { createSupabaseServerClient } from "@shared/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Page not found",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Conversation, Message } from "./chat-types";
+import type { Conversation, Message } from "@domains/chat/types/chat.types";
 
 type ChatMessagesProps = {
   conversation: Conversation;

@@ -1,7 +1,7 @@
 import {
   createSupabaseMiddlewareClient,
   type MiddlewareResponseState,
-} from "@/lib/supabase/middleware-client";
+} from "@shared/lib/supabase/middleware";
 import { NextResponse, type NextRequest } from "next/server";
 
 const AUTH_ROUTES = new Set(["/login", "/email-password", "/google-login"]);

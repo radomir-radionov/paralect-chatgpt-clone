@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { SignOutButton } from "../profile/sign-out-button";
-import type { AuthenticatedUser, Conversation } from "./chat-types";
+import { SignOutButton } from "@domains/auth/components/SignOutButton";
+import type { AuthenticatedUser } from "@domains/auth/types/auth.types";
+import type { Conversation } from "@domains/chat/types/chat.types";
 
 type ChatSidebarProps = {
   conversations: Conversation[];

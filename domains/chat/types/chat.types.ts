@@ -13,8 +13,3 @@ export type Conversation = {
   messages: Message[];
   createdAt: number;
 };
-
-export type AuthenticatedUser = {
-  id: string;
-  email: string;
-};

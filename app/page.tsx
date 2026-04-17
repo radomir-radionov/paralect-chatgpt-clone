@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server-client";
-import { ChatLayout } from "./components/ChatLayout";
+import { createSupabaseServerClient } from "@shared/lib/supabase/server";
+import { ChatLayout } from "@domains/chat/components/ChatLayout";
 
 export default async function HomePage() {
   const supabase = await createSupabaseServerClient();
