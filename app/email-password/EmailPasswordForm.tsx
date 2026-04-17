@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
-import { AuthPageShell } from "../../components/AuthPageShell";
+import { useState } from "react";
+import { AuthPageShell } from "../components/AuthPageShell";
 
 type Mode = "signup" | "signin";
 

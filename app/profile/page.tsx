@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server-client";
+import Link from "next/link";
 import { SignOutButton } from "./sign-out-button";
 
 export default async function ProfilePage() {

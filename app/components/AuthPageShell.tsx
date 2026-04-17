@@ -4,8 +4,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 type AuthPageShellProps = {
-  readonly title: string;
-  readonly children: ReactNode;
+  title: string;
+  children: ReactNode;
 };
 
 export function AuthPageShell({ title, children }: AuthPageShellProps) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
-import { AuthPageShell } from "../../components/AuthPageShell";
+import { AuthPageShell } from "../components/AuthPageShell";
 
 export default function GoogleLoginForm() {
   const supabase = getSupabaseBrowserClient();

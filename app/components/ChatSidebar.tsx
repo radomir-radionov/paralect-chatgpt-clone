@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { SignOutButton } from "../../profile/sign-out-button";
-import type { AuthenticatedUser, Conversation } from "./types";
+import { SignOutButton } from "../profile/sign-out-button";
+import type { AuthenticatedUser, Conversation } from "./chat-types";
 
 type ChatSidebarProps = {
-  readonly conversations: readonly Conversation[];
-  readonly activeConversationId: string;
-  readonly user: AuthenticatedUser;
-  readonly onNewChat: () => void;
-  readonly onSelectConversation: (id: string) => void;
+  conversations: Conversation[];
+  activeConversationId: string;
+  user: AuthenticatedUser;
+  onNewChat: () => void;
+  onSelectConversation: (id: string) => void;
 };
 
 function getInitials(email: string): string {

@@ -4,10 +4,10 @@ import { useCallback, useMemo, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessages } from "./ChatMessages";
 import { ChatSidebar } from "./ChatSidebar";
-import type { AuthenticatedUser, Conversation, Message } from "./types";
+import type { AuthenticatedUser, Conversation, Message } from "./chat-types";
 
 type ChatLayoutProps = {
-  readonly user: AuthenticatedUser;
+  user: AuthenticatedUser;
 };
 
 function createId(): string {

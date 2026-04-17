@@ -10,7 +10,7 @@ import {
 } from "react";
 
 type ChatInputProps = {
-  readonly onSend: (content: string) => void;
+  onSend: (content: string) => void;
 };
 
 const MAX_TEXTAREA_HEIGHT = 200;

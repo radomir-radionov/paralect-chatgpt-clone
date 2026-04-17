@@ -1,19 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Conversation, Message } from "./types";
+import type { Conversation, Message } from "./chat-types";
 
 type ChatMessagesProps = {
-  readonly conversation: Conversation;
+  conversation: Conversation;
 };
 
-function MessageBubble({ message }: { readonly message: Message }) {
+function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
 
   return (
-    <div
-      className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
-    >
+    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words ${
           isUser
