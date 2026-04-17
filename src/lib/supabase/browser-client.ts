@@ -2,20 +2,25 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getRealtimeClientEnv } from "@/lib/env";
 
-let browserClient: SupabaseClient | null = null;
+type SupabaseSchema = Record<string, never>;
 
-/**
- * Shared browser Supabase client (`NEXT_PUBLIC_*` anon key) — Realtime subscribe.
- */
-export function getBrowserSupabase(): SupabaseClient {
-  if (browserClient) return browserClient;
-  const { NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY } =
-    getRealtimeClientEnv();
-  browserClient = createBrowserClient(
-    NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  );
-  return browserClient;
+let client: SupabaseClient<SupabaseSchema> | null = null;
+
+export function getSupabaseBrowserClient(): SupabaseClient<SupabaseSchema> {
+  if (client) {
+    return client;
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    );
+  }
+
+  client = createBrowserClient<SupabaseSchema>(supabaseUrl, supabaseAnonKey);
+  return client;
 }
