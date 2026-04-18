@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
+import { ArrowLeftIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@shared/components/ui/button";
 import { useIntersectionTrigger } from "@shared/lib/dom/useIntersectionTrigger";
@@ -21,6 +23,7 @@ export function RoomClient({
   roomId: string;
   userId: string;
 }) {
+  const router = useRouter();
   const roomQuery = useRoom(roomId, userId);
   const profileQuery = useProfile(userId);
 
@@ -58,11 +61,23 @@ export function RoomClient({
   return (
     <div className="container mx-auto h-screen-with-header border border-y-0 flex flex-col">
       <div className="flex items-center justify-between gap-2 p-4">
-        <div className="border-b">
-          <h1 className="text-2xl font-bold">{room.name}</h1>
-          <p className="text-muted-foreground text-sm">
-            {connectedUsers} {connectedUsers === 1 ? "user" : "users"} online
-          </p>
+        <div className="flex min-w-0 flex-1 items-start gap-2 border-b">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="mt-0.5 shrink-0"
+            aria-label="Go back"
+            onClick={() => router.back()}
+          >
+            <ArrowLeftIcon className="size-4" />
+          </Button>
+          <div className="min-w-0 pb-3">
+            <h1 className="text-2xl font-bold">{room.name}</h1>
+            <p className="text-muted-foreground text-sm">
+              {connectedUsers} {connectedUsers === 1 ? "user" : "users"} online
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <InviteUserModal roomId={room.id} />

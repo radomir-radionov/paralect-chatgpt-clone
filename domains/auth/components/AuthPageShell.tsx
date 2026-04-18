@@ -3,26 +3,48 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { Button } from "@shared/components/ui/button";
+
 type AuthPageShellProps = {
   title: string;
+  eyebrow?: string;
+  description?: string;
   children: ReactNode;
+  backHref?: string;
+  backLabel?: string;
 };
 
-export function AuthPageShell({ title, children }: AuthPageShellProps) {
+export function AuthPageShell({
+  title,
+  eyebrow,
+  description,
+  children,
+  backHref = "/login",
+  backLabel = "Back to login",
+}: AuthPageShellProps) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#02050b] via-[#050c1d] to-[#071426] text-slate-100">
-      <header className="border-b border-white/10 bg-slate-950/40 backdrop-blur">
-        <div className="mx-auto flex max-w-lg items-center justify-between px-6 py-5">
-          <h1 className="text-xl font-semibold text-white">{title}</h1>
-          <Link
-            href="/login"
-            className="text-sm font-semibold text-emerald-300 transition hover:text-emerald-200"
-          >
-            Back to login
-          </Link>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
+        <div className="container mx-auto flex min-h-14 max-w-5xl items-center justify-between gap-4 px-4 py-3">
+          <div className="min-w-0">
+            {eyebrow ? (
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                {eyebrow}
+              </p>
+            ) : null}
+            <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+              {title}
+            </h1>
+            {description ? (
+              <p className="text-sm text-muted-foreground">{description}</p>
+            ) : null}
+          </div>
+          <Button variant="ghost" size="sm" asChild className="shrink-0">
+            <Link href={backHref}>{backLabel}</Link>
+          </Button>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-lg px-6 py-12">{children}</main>
+      <main className="container mx-auto w-full max-w-lg px-4 py-8">{children}</main>
     </div>
   );
 }
