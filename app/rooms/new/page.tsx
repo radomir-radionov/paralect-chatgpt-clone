@@ -25,12 +25,16 @@ import {
 import { Input } from "@shared/components/ui/input";
 import { LoadingSwap } from "@shared/components/ui/loading-swap";
 
-import { createRoom } from "@domains/chat/actions/rooms";
+import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
+import { useCreateRoom } from "@domains/chat/mutations/useCreateRoom";
 import { createRoomSchema } from "@domains/chat/schemas/rooms";
 
 type FormData = z.infer<typeof createRoomSchema>;
 
 export default function NewRoomPage() {
+  const { user } = useCurrentUser();
+  const createRoom = useCreateRoom(user?.id ?? null);
+
   const form = useForm<FormData>({
     defaultValues: {
       name: "",
@@ -40,10 +44,10 @@ export default function NewRoomPage() {
   });
 
   async function handleSubmit(data: FormData) {
-    const { error, message } = await createRoom(data);
+    const result = await createRoom.mutateAsync(data);
 
-    if (error) {
-      toast.error(message);
+    if (result?.error) {
+      toast.error(result.message);
     }
   }
 

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
 
+import { replaceMessage } from "@domains/chat/queries/messagesCache";
 import type { Message } from "@domains/chat/types/chat.types";
 
 export function useRealtimeChat({
@@ -14,8 +16,8 @@ export function useRealtimeChat({
   roomId: string;
   userId: string;
 }) {
+  const queryClient = useQueryClient();
   const [connectedUsers, setConnectedUsers] = useState(1);
-  const [messages, setMessages] = useState<Message[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
@@ -43,23 +45,20 @@ export function useRealtimeChat({
         })
         .on("broadcast", { event: "INSERT" }, (payload) => {
           const record = payload.payload;
-          setMessages((prevMessages) => [
-            ...prevMessages,
-            {
-              id: record.id,
-              text: record.text,
-              created_at: record.created_at,
-              author_id: record.author_id,
-              author: {
-                name: record.author_name,
-                image_url: record.author_image_url,
-              },
+          replaceMessage(queryClient, roomId, {
+            id: record.id,
+            text: record.text,
+            created_at: record.created_at,
+            author_id: record.author_id,
+            author: {
+              name: record.author_name,
+              image_url: record.author_image_url,
             },
-          ]);
+            status: "success",
+          });
         })
         .subscribe((status) => {
           if (status !== "SUBSCRIBED") return;
-
           newChannel.track({ userId });
         });
     });
@@ -71,7 +70,7 @@ export function useRealtimeChat({
       newChannel.untrack();
       newChannel.unsubscribe();
     };
-  }, [roomId, userId]);
+  }, [queryClient, roomId, userId]);
 
   async function broadcastMessage(message: Message) {
     if (!channelRef.current) return;
@@ -89,5 +88,5 @@ export function useRealtimeChat({
     });
   }
 
-  return { connectedUsers, messages, broadcastMessage };
+  return { connectedUsers, broadcastMessage };
 }

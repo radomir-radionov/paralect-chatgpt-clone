@@ -1,10 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { ComponentProps } from "react";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
 import { Button } from "@shared/components/ui/button";
-import { useRouter } from "next/navigation";
+
+import { useSignOut } from "@domains/auth/mutations/useSignOut";
 
 type SignOutButtonProps = Omit<ComponentProps<typeof Button>, "onClick" | "type">;
 
@@ -13,14 +14,15 @@ export function SignOutButton({
   ...props
 }: SignOutButtonProps) {
   const router = useRouter();
-  const supabase = getSupabaseBrowserClient();
+  const signOut = useSignOut();
 
   return (
     <Button
       type="button"
       {...props}
+      disabled={props.disabled ?? signOut.isPending}
       onClick={async () => {
-        await supabase.auth.signOut();
+        await signOut.mutateAsync();
         router.push("/login");
         router.refresh();
       }}

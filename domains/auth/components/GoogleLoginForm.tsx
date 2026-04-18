@@ -1,18 +1,15 @@
 "use client";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
+import { useSignInWithGoogle } from "@domains/auth/mutations/useSignInWithGoogle";
+
 import { AuthPageShell } from "./AuthPageShell";
 
 export default function GoogleLoginForm() {
-  const supabase = getSupabaseBrowserClient();
+  const signInWithGoogle = useSignInWithGoogle();
 
-  async function handleGoogleLogin() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/`,
-        skipBrowserRedirect: false,
-      },
+  function handleGoogleLogin() {
+    signInWithGoogle.mutate({
+      redirectTo: `${window.location.origin}/`,
     });
   }
 
@@ -48,7 +45,8 @@ export default function GoogleLoginForm() {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1a73e8] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/40 transition hover:bg-[#1662c4]"
+          disabled={signInWithGoogle.isPending}
+          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1a73e8] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/40 transition hover:bg-[#1662c4] disabled:cursor-not-allowed disabled:bg-[#1a73e8]/50"
         >
           Continue with Google
         </button>

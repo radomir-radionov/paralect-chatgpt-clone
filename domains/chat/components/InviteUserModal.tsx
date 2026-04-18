@@ -26,7 +26,7 @@ import {
 import { Input } from "@shared/components/ui/input";
 import { LoadingSwap } from "@shared/components/ui/loading-swap";
 
-import { addUserToRoom } from "@domains/chat/actions/rooms";
+import { useInviteUser } from "@domains/chat/mutations/useInviteUser";
 
 const formSchema = z.object({
   userId: z.string().min(1).trim(),
@@ -37,6 +37,7 @@ type FormData = z.infer<typeof formSchema>;
 export function InviteUserModal({ roomId }: { roomId: string }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const inviteUser = useInviteUser();
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -46,12 +47,16 @@ export function InviteUserModal({ roomId }: { roomId: string }) {
   });
 
   async function onSubmit(data: FormData) {
-    const res = await addUserToRoom({ roomId, userId: data.userId });
+    const res = await inviteUser.mutateAsync({
+      roomId,
+      userId: data.userId,
+    });
 
     if (res.error) {
       toast.error(res.message);
     } else {
       setOpen(false);
+      form.reset();
       router.refresh();
     }
   }

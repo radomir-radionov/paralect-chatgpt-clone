@@ -1,7 +1,10 @@
 "use client";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
 import { useState } from "react";
+
+import { useSignInWithPassword } from "@domains/auth/mutations/useSignInWithPassword";
+import { useSignUp } from "@domains/auth/mutations/useSignUp";
+
 import { AuthPageShell } from "./AuthPageShell";
 
 type Mode = "signup" | "signin";
@@ -11,41 +14,37 @@ export default function EmailPasswordForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
-  const supabase = getSupabaseBrowserClient();
+
+  const signUp = useSignUp();
+  const signIn = useSignInWithPassword();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (mode === "signup") {
-      const { error, data } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
+      try {
+        const { isNewRegistration } = await signUp.mutateAsync({
+          email,
+          password,
           emailRedirectTo: `${window.location.origin}/welcome`,
-        },
-      });
-      if (error) {
-        setStatus(error.message);
-        return;
-      }
-      const identities = data.user?.identities;
-      const isNewRegistration = identities != null && identities.length > 0;
-      if (isNewRegistration) {
-        setStatus("Check your inbox to confirm the new account.");
-      } else {
+        });
         setStatus(
-          "An account with this email already exists. Try signing in.",
+          isNewRegistration
+            ? "Check your inbox to confirm the new account."
+            : "An account with this email already exists. Try signing in.",
+        );
+      } catch (error) {
+        setStatus(
+          error instanceof Error ? error.message : "Sign-up failed.",
         );
       }
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) {
-      setStatus(error.message);
+    try {
+      await signIn.mutateAsync({ email, password });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Sign-in failed.");
       return;
     }
 
@@ -116,6 +115,7 @@ export default function EmailPasswordForm() {
         </div>
         <button
           type="submit"
+          disabled={signIn.isPending || signUp.isPending}
           className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-600/40"
         >
           {mode === "signup" ? "Create account" : "Sign in"}

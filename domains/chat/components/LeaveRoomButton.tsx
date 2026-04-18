@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import type { ComponentProps } from "react";
 
 import { ActionButton } from "@shared/components/ui/action-button";
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
+
+import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
+import { useLeaveRoom } from "@domains/chat/mutations/useLeaveRoom";
 
 export function LeaveRoomButton({
   children,
@@ -16,16 +18,17 @@ export function LeaveRoomButton({
   redirectTo?: string;
 }) {
   const router = useRouter();
+  const { user } = useCurrentUser();
+  const leaveRoom = useLeaveRoom();
 
-  async function leaveRoom() {
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase
-      .from("chat_room_member")
-      .delete()
-      .eq("chat_room_id", roomId);
-
-    if (error) {
-      return { error: true, message: "Failed to leave room" };
+  async function handleLeave() {
+    try {
+      await leaveRoom.mutateAsync({ roomId, userId: user?.id });
+    } catch (err) {
+      return {
+        error: true,
+        message: err instanceof Error ? err.message : "Failed to leave room",
+      };
     }
 
     if (redirectTo) {
@@ -38,7 +41,7 @@ export function LeaveRoomButton({
   }
 
   return (
-    <ActionButton {...props} action={leaveRoom}>
+    <ActionButton {...props} action={handleLeave}>
       {children}
     </ActionButton>
   );

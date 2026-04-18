@@ -1,61 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback } from "react";
 
 import { Button } from "@shared/components/ui/button";
+import { useIntersectionTrigger } from "@shared/lib/dom/useIntersectionTrigger";
 
 import { ChatInput } from "@domains/chat/components/ChatInput";
 import { ChatMessage } from "@domains/chat/components/ChatMessage";
 import { InviteUserModal } from "@domains/chat/components/InviteUserModal";
 import { LeaveRoomButton } from "@domains/chat/components/LeaveRoomButton";
-import { useInfiniteScrollChat } from "@domains/chat/hooks/useInfiniteScrollChat";
 import { useRealtimeChat } from "@domains/chat/hooks/useRealtimeChat";
-import type { Message, PendingMessage } from "@domains/chat/types/chat.types";
+import { useRoom } from "@domains/chat/queries/useRooms";
+import { useMessages } from "@domains/chat/queries/useMessages";
+import { useProfile } from "@domains/auth/queries/useProfile";
 
 export function RoomClient({
-  room,
-  user,
-  messages,
+  roomId,
+  userId,
 }: {
-  user: {
-    id: string;
-    name: string;
-    image_url: string | null;
-  };
-  room: {
-    id: string;
-    name: string;
-  };
-  messages: Message[];
+  roomId: string;
+  userId: string;
 }) {
-  const {
-    connectedUsers,
-    messages: realtimeMessages,
-    broadcastMessage,
-  } = useRealtimeChat({
-    roomId: room.id,
-    userId: user.id,
+  const roomQuery = useRoom(roomId, userId);
+  const profileQuery = useProfile(userId);
+
+  const { connectedUsers, broadcastMessage } = useRealtimeChat({
+    roomId,
+    userId,
   });
+
   const {
-    loadMoreMessages,
-    messages: oldMessages,
+    messages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    error,
     status,
-    triggerQueryRef,
-  } = useInfiniteScrollChat({
-    roomId: room.id,
-    startingMessages: messages.toReversed(),
+  } = useMessages(roomId);
+
+  const handleIntersect = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  const triggerRef = useIntersectionTrigger(handleIntersect, {
+    enabled: hasNextPage && !isFetchingNextPage && status !== "error",
   });
-  const [sentMessages, setSentMessages] = useState<PendingMessage[]>([]);
 
-  const liveMessages = [
-    ...realtimeMessages,
-    ...sentMessages.filter((m) => !realtimeMessages.find((rm) => rm.id === m.id)),
-  ].sort(
-    (a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  );
+  const room = roomQuery.data;
+  const profile = profileQuery.data;
 
-  const visibleMessages = oldMessages.concat(liveMessages);
+  if (room == null || profile == null) {
+    return null;
+  }
 
   return (
     <div className="container mx-auto h-screen-with-header border border-y-0 flex flex-col">
@@ -86,61 +84,38 @@ export function RoomClient({
         }}
       >
         <div>
-          {status === "loading" && (
+          {isFetchingNextPage && (
             <p className="text-center text-sm text-muted-foreground py-2">
               Loading more messages...
             </p>
           )}
-          {status === "error" && (
+          {error != null && (
             <div className="text-center">
               <p className="text-sm text-destructive py-2">
                 Error loading messages.
               </p>
-              <Button onClick={loadMoreMessages} variant="outline">
+              <Button onClick={() => fetchNextPage()} variant="outline">
                 Retry
               </Button>
             </div>
           )}
-          {visibleMessages.map((message, index) => (
+          {messages.map((message, index) => (
             <ChatMessage
               key={message.id}
               {...message}
-              ref={index === 0 && status === "idle" ? triggerQueryRef : null}
+              ref={index === 0 && hasNextPage ? triggerRef : null}
             />
           ))}
         </div>
       </div>
       <ChatInput
         roomId={room.id}
-        onSend={(message) => {
-          setSentMessages((prev) => [
-            ...prev,
-            {
-              id: message.id,
-              text: message.text,
-              created_at: new Date().toISOString(),
-              author_id: user.id,
-              author: {
-                name: user.name,
-                image_url: user.image_url,
-              },
-              status: "pending",
-            },
-          ]);
+        author={{
+          id: profile.id,
+          name: profile.name,
+          image_url: profile.image_url,
         }}
-        onSuccessfulSend={(message) => {
-          setSentMessages((prev) =>
-            prev.map((m) =>
-              m.id === message.id ? { ...message, status: "success" } : m,
-            ),
-          );
-          broadcastMessage(message);
-        }}
-        onErrorSend={(id) => {
-          setSentMessages((prev) =>
-            prev.map((m) => (m.id === id ? { ...m, status: "error" } : m)),
-          );
-        }}
+        onSuccessfulSend={broadcastMessage}
       />
     </div>
   );

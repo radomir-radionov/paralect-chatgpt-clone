@@ -12,3 +12,5 @@ export type Message = {
 export type MessageStatus = "pending" | "error" | "success";
 
 export type PendingMessage = Message & { status: MessageStatus };
+
+export type CachedMessage = Message & { status?: MessageStatus };

@@ -1,12 +1,13 @@
-import { createSupabaseServerClient } from "@shared/lib/supabase/server";
+"use client";
+
 import Link from "next/link";
+
+import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
+
 import { SignOutButton } from "./SignOutButton";
 
-export async function ProfileView() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export function ProfileView() {
+  const { user } = useCurrentUser();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#02050b] via-[#050c1d] to-[#071426] text-slate-100">

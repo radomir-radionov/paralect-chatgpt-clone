@@ -11,23 +11,22 @@ import {
   InputGroupTextarea,
 } from "@shared/components/ui/input-group";
 
-import { sendMessage } from "@domains/chat/actions/messages";
+import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
 import type { Message } from "@domains/chat/types/chat.types";
 
 type Props = {
   roomId: string;
-  onSend: (message: { id: string; text: string }) => void;
-  onSuccessfulSend: (message: Message) => void;
-  onErrorSend: (id: string) => void;
+  author: {
+    id: string;
+    name: string;
+    image_url: string | null;
+  };
+  onSuccessfulSend?: (message: Message) => void;
 };
 
-export function ChatInput({
-  roomId,
-  onSend,
-  onSuccessfulSend,
-  onErrorSend,
-}: Props) {
+export function ChatInput({ roomId, author, onSuccessfulSend }: Props) {
   const [message, setMessage] = useState("");
+  const sendMessage = useSendMessage();
 
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault();
@@ -36,13 +35,17 @@ export function ChatInput({
 
     setMessage("");
     const id = crypto.randomUUID();
-    onSend({ id, text });
-    const result = await sendMessage({ id, text, roomId });
+    const result = await sendMessage.mutateAsync({
+      id,
+      text,
+      roomId,
+      author,
+    });
+
     if (result.error) {
       toast.error(result.message);
-      onErrorSend(id);
     } else {
-      onSuccessfulSend(result.message);
+      onSuccessfulSend?.(result.message);
     }
   }
 
