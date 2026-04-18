@@ -39,7 +39,13 @@ export async function ProfileView() {
             </div>
           </dl>
           <div className="mt-8">
-            <SignOutButton />
+            <SignOutButton
+              variant="outline"
+              size="sm"
+              className="rounded-full border-white/20 bg-white/5 text-white hover:bg-white/15 hover:text-white"
+            >
+              Sign out
+            </SignOutButton>
           </div>
         </section>
       </main>

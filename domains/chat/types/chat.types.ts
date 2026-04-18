@@ -1,15 +1,14 @@
-export type MessageRole = "user" | "assistant";
-
 export type Message = {
   id: string;
-  role: MessageRole;
-  content: string;
-  createdAt: number;
+  text: string;
+  created_at: string;
+  author_id: string;
+  author: {
+    name: string;
+    image_url: string | null;
+  };
 };
 
-export type Conversation = {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: number;
-};
+export type MessageStatus = "pending" | "error" | "success";
+
+export type PendingMessage = Message & { status: MessageStatus };

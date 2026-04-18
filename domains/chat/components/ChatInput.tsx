@@ -1,103 +1,77 @@
 "use client";
 
-import {
-  useCallback,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
+import { SendIcon } from "lucide-react";
+import { type FormEvent, useState } from "react";
+import { toast } from "sonner";
 
-type ChatInputProps = {
-  onSend: (content: string) => void;
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupTextarea,
+} from "@shared/components/ui/input-group";
+
+import { sendMessage } from "@domains/chat/actions/messages";
+import type { Message } from "@domains/chat/types/chat.types";
+
+type Props = {
+  roomId: string;
+  onSend: (message: { id: string; text: string }) => void;
+  onSuccessfulSend: (message: Message) => void;
+  onErrorSend: (id: string) => void;
 };
 
-const MAX_TEXTAREA_HEIGHT = 200;
+export function ChatInput({
+  roomId,
+  onSend,
+  onSuccessfulSend,
+  onErrorSend,
+}: Props) {
+  const [message, setMessage] = useState("");
 
-export function ChatInput({ onSend }: ChatInputProps) {
-  const [value, setValue] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  async function handleSubmit(e?: FormEvent) {
+    e?.preventDefault();
+    const text = message.trim();
+    if (!text) return;
 
-  const submit = useCallback(() => {
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      return;
+    setMessage("");
+    const id = crypto.randomUUID();
+    onSend({ id, text });
+    const result = await sendMessage({ id, text, roomId });
+    if (result.error) {
+      toast.error(result.message);
+      onErrorSend(id);
+    } else {
+      onSuccessfulSend(result.message);
     }
-    onSend(trimmed);
-    setValue("");
-  }, [value, onSend]);
-
-  const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      submit();
-    },
-    [submit],
-  );
-
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        submit();
-      }
-    },
-    [submit],
-  );
-
-  useLayoutEffect(() => {
-    const node = textareaRef.current;
-    if (!node) {
-      return;
-    }
-    node.style.height = "auto";
-    node.style.height = `${Math.min(node.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
-  }, [value]);
-
-  const isEmpty = value.trim().length === 0;
+  }
 
   return (
-    <div className="border-t border-white/10 bg-[#0b0f19]/90 px-4 py-4 backdrop-blur md:px-6">
-      <form
-        onSubmit={handleSubmit}
-        className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-2 shadow-[0_10px_40px_rgba(2,6,23,0.45)] focus-within:border-emerald-400/50 focus-within:ring-2 focus-within:ring-emerald-400/20"
-      >
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={1}
-          placeholder="Send a message..."
-          className="flex-1 resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-slate-500 focus:outline-none"
-          aria-label="Message"
+    <form onSubmit={handleSubmit} className="p-3">
+      <InputGroup>
+        <InputGroupTextarea
+          placeholder="Type your message..."
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          className="field-sizing-content min-h-auto"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
         />
-        <button
-          type="submit"
-          disabled={isEmpty}
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/30 disabled:text-white/60"
-          aria-label="Send message"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-4 w-4"
-            aria-hidden="true"
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton
+            type="submit"
+            aria-label="Send"
+            title="Send"
+            size="icon-sm"
           >
-            <path d="M5 12h14" />
-            <path d="m13 6 6 6-6 6" />
-          </svg>
-        </button>
-      </form>
-      <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-slate-500">
-        Enter to send • Shift + Enter for a new line
-      </p>
-    </div>
+            <SendIcon />
+          </InputGroupButton>
+        </InputGroupAddon>
+      </InputGroup>
+    </form>
   );
 }

@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+
+import { Toaster } from "@shared/components/ui/sonner";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Paralect Chat",
-  description: "ChatGPT-style interface with Supabase auth",
+  description: "Realtime chat with Supabase",
 };
 
 export default function RootLayout({
@@ -28,6 +31,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <Toaster />
       </body>
     </html>
   );

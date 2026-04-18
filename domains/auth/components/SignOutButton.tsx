@@ -1,23 +1,31 @@
 "use client";
 
+import type { ComponentProps } from "react";
+
 import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
+import { Button } from "@shared/components/ui/button";
 import { useRouter } from "next/navigation";
 
-export function SignOutButton() {
+type SignOutButtonProps = Omit<ComponentProps<typeof Button>, "onClick" | "type">;
+
+export function SignOutButton({
+  children = "Sign out",
+  ...props
+}: SignOutButtonProps) {
   const router = useRouter();
   const supabase = getSupabaseBrowserClient();
 
   return (
-    <button
+    <Button
       type="button"
-      className="inline-flex items-center justify-center rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"
+      {...props}
       onClick={async () => {
         await supabase.auth.signOut();
         router.push("/login");
         router.refresh();
       }}
     >
-      Sign out
-    </button>
+      {children}
+    </Button>
   );
 }

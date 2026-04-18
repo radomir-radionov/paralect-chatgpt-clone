@@ -1,13 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-import { getSupabaseEnv } from "./env";
+import { getSupabaseAdminEnv, getSupabaseEnv } from "./env";
+import type { Database } from "./types/database";
 
 export async function createSupabaseServerClient() {
   const { supabaseUrl, supabaseAnonKey } = getSupabaseEnv();
   const cookieStore = await cookies();
 
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
+  return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -20,6 +21,18 @@ export async function createSupabaseServerClient() {
         } catch {
           // Cookie writes can fail when the response is already committed.
         }
+      },
+    },
+  });
+}
+
+export function createSupabaseAdminClient() {
+  const { supabaseUrl, supabaseSecretKey } = getSupabaseAdminEnv();
+
+  return createServerClient<Database>(supabaseUrl, supabaseSecretKey, {
+    cookies: {
+      getAll() {
+        return [];
       },
     },
   });

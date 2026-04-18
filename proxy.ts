@@ -7,7 +7,12 @@ import { NextResponse, type NextRequest } from "next/server";
 const AUTH_ROUTES = new Set(["/login", "/email-password", "/google-login"]);
 
 function isProtectedPath(pathname: string) {
-  return pathname === "/" || pathname === "/profile";
+  return (
+    pathname === "/" ||
+    pathname === "/profile" ||
+    pathname === "/rooms" ||
+    pathname.startsWith("/rooms/")
+  );
 }
 
 /**
