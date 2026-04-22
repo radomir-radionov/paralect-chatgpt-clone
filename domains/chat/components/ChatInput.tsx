@@ -1,6 +1,6 @@
 "use client";
 
-import { SendIcon } from "lucide-react";
+import { LoaderCircleIcon, SendIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +13,8 @@ import {
 
 import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
 import type { Message } from "@domains/chat/types/chat.types";
+
+const MAX_LENGTH = 2000;
 
 type Props = {
   roomId: string;
@@ -27,11 +29,14 @@ type Props = {
 export function ChatInput({ roomId, author, onSuccessfulSend }: Props) {
   const [message, setMessage] = useState("");
   const sendMessage = useSendMessage();
+  const remaining = MAX_LENGTH - message.length;
+  const isOverLimit = remaining < 0;
+  const showCounter = remaining <= 200;
 
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault();
     const text = message.trim();
-    if (!text) return;
+    if (!text || sendMessage.isPending || isOverLimit) return;
 
     setMessage("");
     const id = crypto.randomUUID();
@@ -50,13 +55,15 @@ export function ChatInput({ roomId, author, onSuccessfulSend }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-3">
+    <form onSubmit={handleSubmit} className="px-4 py-3 border-t shrink-0">
       <InputGroup>
         <InputGroupTextarea
-          placeholder="Type your message..."
+          placeholder="Message…"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="field-sizing-content min-h-auto"
+          className="field-sizing-content min-h-auto max-h-40"
+          disabled={sendMessage.isPending}
+          aria-invalid={isOverLimit || undefined}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -64,17 +71,36 @@ export function ChatInput({ roomId, author, onSuccessfulSend }: Props) {
             }
           }}
         />
-        <InputGroupAddon align="inline-end">
+        <InputGroupAddon align="inline-end" className="self-end pb-1.5">
+          {showCounter && (
+            <span
+              className={
+                isOverLimit
+                  ? "text-xs text-destructive font-medium"
+                  : "text-xs text-muted-foreground"
+              }
+            >
+              {remaining}
+            </span>
+          )}
           <InputGroupButton
             type="submit"
             aria-label="Send"
-            title="Send"
+            title="Send (Enter)"
             size="icon-sm"
+            disabled={sendMessage.isPending || !message.trim() || isOverLimit}
           >
-            <SendIcon />
+            {sendMessage.isPending ? (
+              <LoaderCircleIcon className="animate-spin" />
+            ) : (
+              <SendIcon />
+            )}
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
+      <p className="mt-1.5 text-xs text-muted-foreground/60 hidden sm:block">
+        Enter to send · Shift+Enter for new line
+      </p>
     </form>
   );
 }

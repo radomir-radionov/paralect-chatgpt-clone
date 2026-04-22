@@ -26,7 +26,14 @@ import { AuthPageShell } from "./AuthPageShell";
 
 type Mode = "signup" | "signin";
 
-export default function EmailPasswordForm() {
+export default function EmailPasswordForm({
+  showHeader = true,
+  embedded = false,
+}: {
+  showHeader?: boolean;
+  /** When true, render only the card (for use inside a parent shell). */
+  embedded?: boolean;
+}) {
   const emailId = useId();
   const passwordId = useId();
   const [mode, setMode] = useState<Mode>("signin");
@@ -79,8 +86,7 @@ export default function EmailPasswordForm() {
       ? "text-destructive"
       : "text-muted-foreground";
 
-  return (
-    <AuthPageShell title="Email & password">
+  const card = (
       <Card>
         <CardHeader className="space-y-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -174,6 +180,15 @@ export default function EmailPasswordForm() {
           </form>
         </CardContent>
       </Card>
+  );
+
+  if (embedded) {
+    return card;
+  }
+
+  return (
+    <AuthPageShell title="Email & password" showHeader={showHeader}>
+      {card}
     </AuthPageShell>
   );
 }
