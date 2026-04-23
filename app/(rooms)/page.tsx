@@ -8,14 +8,14 @@ export default function RoomsIndexPage() {
         <MessageSquareIcon className="size-8 text-muted-foreground" />
       </div>
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold">No room selected</h2>
+        <h2 className="text-lg font-semibold">No chat selected</h2>
         <p className="text-sm text-muted-foreground">
-          Pick a room from the sidebar or{" "}
+          Pick a chat from the sidebar or{" "}
           <Link
             href="/rooms/new"
             className="underline underline-offset-2 hover:text-foreground transition-colors"
           >
-            create a new one
+            start a new one
           </Link>
           .
         </p>

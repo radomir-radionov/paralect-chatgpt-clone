@@ -2,11 +2,13 @@ export type Message = {
   id: string;
   text: string;
   created_at: string;
-  author_id: string;
+  author_id: string | null;
+  role: "assistant" | "user";
   author: {
     name: string;
     image_url: string | null;
   };
+  error_message?: string | null;
 };
 
 export type MessageStatus = "pending" | "error" | "success";

@@ -15,15 +15,14 @@ import {
   getNextPageParamForMessages,
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
-  type MessagesPage,
 } from "./message-fetchers";
 
 export {
   fetchMessagesPage,
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
-  type MessagesPage,
 } from "./message-fetchers";
+export type { MessagesPage } from "./message-fetchers";
 
 export const messagesInfiniteQueryOptions = (roomId: string) =>
   infiniteQueryOptions({

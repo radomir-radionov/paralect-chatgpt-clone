@@ -5,21 +5,11 @@ import { queryOptions, useQuery } from "@tanstack/react-query";
 import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
 
 import { chatKeys } from "./keys";
-import {
-  fetchJoinedRooms,
-  fetchPublicRooms,
-  fetchRoom,
-} from "./room-fetchers";
+import { fetchJoinedRooms, fetchRoom } from "./room-fetchers";
 
 export type { RoomDetails, RoomListItem } from "./room-fetchers";
 
-export { fetchJoinedRooms, fetchPublicRooms, fetchRoom } from "./room-fetchers";
-
-export const publicRoomsQueryOptions = () =>
-  queryOptions({
-    queryKey: chatKeys.publicRooms,
-    queryFn: () => fetchPublicRooms(getSupabaseBrowserClient()),
-  });
+export { fetchJoinedRooms, fetchRoom } from "./room-fetchers";
 
 export const joinedRoomsQueryOptions = (userId: string) =>
   queryOptions({
@@ -34,10 +24,6 @@ export const roomQueryOptions = (roomId: string, userId: string) =>
     queryFn: () => fetchRoom(getSupabaseBrowserClient(), roomId, userId),
     enabled: Boolean(roomId && userId),
   });
-
-export function usePublicRooms() {
-  return useQuery(publicRoomsQueryOptions());
-}
 
 export function useJoinedRooms(userId: string) {
   return useQuery(joinedRoomsQueryOptions(userId));

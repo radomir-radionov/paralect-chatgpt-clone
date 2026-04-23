@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentProps, type ReactNode, useTransition } from "react";
+import { type ComponentProps, type ReactNode, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@shared/components/ui/button";
@@ -28,17 +28,19 @@ export function ActionButton({
   areYouSureDescription?: ReactNode;
 }) {
   const [isLoading, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function performAction() {
     startTransition(async () => {
       const data = await action();
       if (data.error) toast.error(data.message ?? "Error");
+      else setOpen(false);
     });
   }
 
   if (requireAreYouSure) {
     return (
-      <AlertDialog open={isLoading ? true : undefined}>
+      <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogTrigger asChild>
           <Button {...props} />
         </AlertDialogTrigger>
@@ -50,7 +52,7 @@ export function ActionButton({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
             <AlertDialogAction disabled={isLoading} onClick={performAction}>
               <LoadingSwap isLoading={isLoading}>Yes</LoadingSwap>
             </AlertDialogAction>

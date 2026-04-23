@@ -17,49 +17,33 @@ export type Database = {
           created_at: string;
           id: string;
           is_public: boolean;
+          last_message_at: string;
+          model_slug: string;
           name: string;
+          owner_id: string;
         };
         Insert: {
           created_at?: string;
           id?: string;
           is_public: boolean;
+          last_message_at?: string;
+          model_slug?: string;
           name: string;
+          owner_id: string;
         };
         Update: {
           created_at?: string;
           id?: string;
           is_public?: boolean;
+          last_message_at?: string;
+          model_slug?: string;
           name?: string;
-        };
-        Relationships: [];
-      };
-      chat_room_member: {
-        Row: {
-          chat_room_id: string;
-          created_at: string;
-          member_id: string;
-        };
-        Insert: {
-          chat_room_id: string;
-          created_at?: string;
-          member_id: string;
-        };
-        Update: {
-          chat_room_id?: string;
-          created_at?: string;
-          member_id?: string;
+          owner_id?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "chat_room_member_chat_room_id_fkey";
-            columns: ["chat_room_id"];
-            isOneToOne: false;
-            referencedRelation: "chat_room";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "chat_room_member_member_id_fkey";
-            columns: ["member_id"];
+            foreignKeyName: "chat_room_owner_id_fkey";
+            columns: ["owner_id"];
             isOneToOne: false;
             referencedRelation: "user_profile";
             referencedColumns: ["id"];
@@ -68,24 +52,30 @@ export type Database = {
       };
       message: {
         Row: {
-          author_id: string;
+          author_id: string | null;
           chat_room_id: string;
           created_at: string;
+          error_message: string | null;
           id: string;
+          role: "assistant" | "user";
           text: string;
         };
         Insert: {
-          author_id: string;
+          author_id?: string | null;
           chat_room_id: string;
           created_at?: string;
+          error_message?: string | null;
           id?: string;
+          role?: "assistant" | "user";
           text: string;
         };
         Update: {
-          author_id?: string;
+          author_id?: string | null;
           chat_room_id?: string;
           created_at?: string;
+          error_message?: string | null;
           id?: string;
+          role?: "assistant" | "user";
           text?: string;
         };
         Relationships: [

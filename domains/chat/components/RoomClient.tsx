@@ -1,17 +1,21 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
-import { ArrowDownIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowDownIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@shared/components/ui/button";
+import { ActionButton } from "@shared/components/ui/action-button";
 import { useIntersectionTrigger } from "@shared/lib/dom/useIntersectionTrigger";
+import { AI_MODELS, getAiModelBySlug } from "@shared/lib/ai/model-registry";
+import { cn } from "@shared/lib/utils";
 
 import { ChatInput } from "@domains/chat/components/ChatInput";
 import { ChatMessage } from "@domains/chat/components/ChatMessage";
-import { InviteUserModal } from "@domains/chat/components/InviteUserModal";
-import { LeaveRoomButton } from "@domains/chat/components/LeaveRoomButton";
 import { useChatScroll } from "@domains/chat/hooks/useChatScroll";
-import { useRealtimeChat } from "@domains/chat/hooks/useRealtimeChat";
+import { useDeleteRoom } from "@domains/chat/mutations/useDeleteRoom";
+import { useUpdateRoomModel } from "@domains/chat/mutations/useUpdateRoomModel";
 import { useRoom } from "@domains/chat/queries/useRooms";
 import { useMessages } from "@domains/chat/queries/useMessages";
 import { useProfile } from "@domains/auth/queries/useProfile";
@@ -38,13 +42,11 @@ export function RoomClient({
   roomId: string;
   userId: string;
 }) {
+  const router = useRouter();
   const roomQuery = useRoom(roomId, userId);
   const profileQuery = useProfile(userId);
-
-  const { connectedUsers, broadcastMessage } = useRealtimeChat({
-    roomId,
-    userId,
-  });
+  const deleteRoomMutation = useDeleteRoom(userId);
+  const updateRoomModelMutation = useUpdateRoomModel(userId);
 
   const {
     messages,
@@ -86,6 +88,11 @@ export function RoomClient({
 
   const room = roomQuery.data;
   const profile = profileQuery.data;
+  const selectedModel = useMemo(
+    () => (room ? getAiModelBySlug(room.modelSlug) : null),
+    [room],
+  );
+  const [modelSlug, setModelSlug] = useState(() => room?.modelSlug ?? "");
 
   if (room == null || profile == null) {
     return null;
@@ -94,23 +101,69 @@ export function RoomClient({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b shrink-0">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="min-w-0">
           <h1 className="text-base font-semibold truncate">{room.name}</h1>
-          <p className="text-xs text-muted-foreground">
-            {connectedUsers} {connectedUsers === 1 ? "user" : "users"} online
+          <p className="text-xs text-muted-foreground truncate">
+            {selectedModel?.label ?? room.modelSlug}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <InviteUserModal roomId={room.id} />
-          <LeaveRoomButton
-            roomId={room.id}
-            redirectTo="/"
-            size="sm"
-            variant="destructive"
+          <label className="text-xs text-muted-foreground hidden sm:block">
+            Model
+          </label>
+          <select
+            value={modelSlug || room.modelSlug}
+            onChange={async (e) => {
+              const next = e.target.value;
+              setModelSlug(next);
+
+              const result = await updateRoomModelMutation.mutateAsync({
+                roomId,
+                modelSlug: next as (typeof AI_MODELS)[number]["slug"],
+              });
+
+              if (result.error) {
+                toast.error(result.message ?? "Failed to update model");
+                setModelSlug("");
+                return;
+              }
+
+              toast.success("Model updated");
+            }}
+            disabled={updateRoomModelMutation.isPending}
+            className={cn(
+              "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
+              "focus-visible:ring-[3px]",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              "w-[220px] max-w-[60vw]",
+            )}
+            aria-label="AI model"
           >
-            Leave
-          </LeaveRoomButton>
+            {AI_MODELS.map((model) => (
+              <option key={model.slug} value={model.slug}>
+                {model.label}
+              </option>
+            ))}
+          </select>
+
+          <ActionButton
+            variant="ghost"
+            size="icon-sm"
+            title="Delete chat"
+            requireAreYouSure
+            areYouSureDescription="This will permanently delete this chat and all of its messages."
+            action={async () => {
+              const result = await deleteRoomMutation.mutateAsync({ roomId });
+              if (result.error) return result;
+
+              toast.success("Chat deleted");
+              router.push("/");
+              return { error: false };
+            }}
+          >
+            <Trash2Icon className="size-4" />
+          </ActionButton>
         </div>
       </div>
 
@@ -189,7 +242,6 @@ export function RoomClient({
           name: profile.name,
           image_url: profile.image_url,
         }}
-        onSuccessfulSend={broadcastMessage}
       />
     </div>
   );

@@ -1,6 +1,15 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { Button } from "@shared/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@shared/components/ui/card";
 import { createSupabaseServerClient } from "@shared/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -16,19 +25,30 @@ export default async function NotFound() {
   const href = user ? "/" : "/login";
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-linear-to-br from-[#02050b] via-[#050c1d] to-[#071426] px-4 py-12 text-center text-slate-100">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Page not found</h1>
-        <p className="mt-2 max-w-md text-sm text-slate-400">
-          The page you are looking for does not exist or has been moved.
-        </p>
+    <div className="min-h-screen bg-background px-4 py-12 text-foreground">
+      <div className="mx-auto flex min-h-[calc(100vh-6rem)] max-w-lg items-center justify-center">
+        <Card className="w-full text-center">
+          <CardHeader>
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+              404
+            </p>
+            <CardTitle className="text-2xl">Page not found</CardTitle>
+            <CardDescription>
+              The page you are looking for does not exist or may have been moved.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Use the button below to return to a valid entry point.
+            </p>
+          </CardContent>
+          <CardFooter className="justify-center">
+            <Button asChild>
+              <Link href={href}>Go back</Link>
+            </Button>
+          </CardFooter>
+        </Card>
       </div>
-      <Link
-        href={href}
-        className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-400"
-      >
-        Go back
-      </Link>
     </div>
   );
 }

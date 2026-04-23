@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Paralect Chat",
-  description: "Realtime chat with Supabase",
+  title: "Paralect AI Chat",
+  description: "Personal AI chat threads powered by multiple LLM providers",
 };
 
 export default function RootLayout({

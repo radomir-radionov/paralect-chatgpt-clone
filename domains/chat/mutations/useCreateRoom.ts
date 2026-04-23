@@ -15,14 +15,11 @@ export function useCreateRoom(userId: string | null) {
   return useMutation({
     mutationFn: (data: CreateRoomInput) => createRoom(data),
     onSettled: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: chatKeys.publicRooms }),
-        userId
-          ? queryClient.invalidateQueries({
-              queryKey: chatKeys.joinedRooms(userId),
-            })
-          : Promise.resolve(),
-      ]);
+      if (!userId) return;
+
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.joinedRooms(userId),
+      });
     },
   });
 }

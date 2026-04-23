@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { sendMessage } from "@domains/chat/actions/messages";
+import { chatKeys } from "@domains/chat/queries/keys";
 import {
   appendOptimisticMessage,
   applyMessageStatus,
@@ -22,8 +23,8 @@ type SendMessageInput = {
 };
 
 type SendMessageResult =
-  | { error: false; message: Message }
-  | { error: true; message: string };
+  | { error: false; userMessage: Message; assistantMessage: Message }
+  | { error: true; message: string; userMessage?: Message };
 
 export function useSendMessage() {
   const queryClient = useQueryClient();
@@ -37,19 +38,38 @@ export function useSendMessage() {
         text,
         created_at: new Date().toISOString(),
         author_id: author.id,
+        role: "user",
         author: { name: author.name, image_url: author.image_url },
         status: "pending",
       });
     },
     onSuccess: (result, variables) => {
       if (result.error) {
-        applyMessageStatus(queryClient, variables.roomId, variables.id, "error");
+        if (result.userMessage) {
+          replaceMessage(queryClient, variables.roomId, {
+            ...result.userMessage,
+            status: "success",
+          });
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.joinedRooms(variables.author.id),
+          });
+        } else {
+          applyMessageStatus(queryClient, variables.roomId, variables.id, "error");
+        }
         return;
       }
 
       replaceMessage(queryClient, variables.roomId, {
-        ...result.message,
+        ...result.userMessage,
         status: "success",
+      });
+      replaceMessage(queryClient, variables.roomId, {
+        ...result.assistantMessage,
+        status: "success",
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.joinedRooms(variables.author.id),
       });
     },
     onError: (_err, variables) => {

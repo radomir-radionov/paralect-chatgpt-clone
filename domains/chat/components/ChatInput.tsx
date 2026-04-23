@@ -12,7 +12,6 @@ import {
 } from "@shared/components/ui/input-group";
 
 import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
-import type { Message } from "@domains/chat/types/chat.types";
 
 const MAX_LENGTH = 2000;
 
@@ -23,10 +22,9 @@ type Props = {
     name: string;
     image_url: string | null;
   };
-  onSuccessfulSend?: (message: Message) => void;
 };
 
-export function ChatInput({ roomId, author, onSuccessfulSend }: Props) {
+export function ChatInput({ roomId, author }: Props) {
   const [message, setMessage] = useState("");
   const sendMessage = useSendMessage();
   const remaining = MAX_LENGTH - message.length;
@@ -49,8 +47,6 @@ export function ChatInput({ roomId, author, onSuccessfulSend }: Props) {
 
     if (result.error) {
       toast.error(result.message);
-    } else {
-      onSuccessfulSend?.(result.message);
     }
   }
 
@@ -58,7 +54,7 @@ export function ChatInput({ roomId, author, onSuccessfulSend }: Props) {
     <form onSubmit={handleSubmit} className="px-4 py-3 border-t shrink-0">
       <InputGroup>
         <InputGroupTextarea
-          placeholder="Message…"
+          placeholder="Ask anything…"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           className="field-sizing-content min-h-auto max-h-40"

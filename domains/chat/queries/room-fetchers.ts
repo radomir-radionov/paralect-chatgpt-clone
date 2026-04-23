@@ -5,30 +5,21 @@ import type { Database } from "@shared/lib/supabase/types/database";
 export type RoomListItem = {
   id: string;
   name: string;
-  memberCount: number;
+  modelSlug: string;
+  lastMessageAt: string;
 };
 
 export type RoomDetails = {
   id: string;
   name: string;
+  modelSlug: string;
 };
 
 export async function fetchPublicRooms(
   supabase: SupabaseClient<Database>,
 ): Promise<RoomListItem[]> {
-  const { data, error } = await supabase
-    .from("chat_room")
-    .select("id, name, chat_room_member (count)")
-    .eq("is_public", true)
-    .order("name", { ascending: true });
-
-  if (error) return [];
-
-  return data.map((room) => ({
-    id: room.id,
-    name: room.name,
-    memberCount: room.chat_room_member[0]?.count ?? 0,
-  }));
+  void supabase;
+  return [];
 }
 
 export async function fetchJoinedRooms(
@@ -37,20 +28,18 @@ export async function fetchJoinedRooms(
 ): Promise<RoomListItem[]> {
   const { data, error } = await supabase
     .from("chat_room")
-    .select("id, name, chat_room_member (member_id)")
-    .order("name", { ascending: true });
+    .select("id, name, model_slug, last_message_at")
+    .eq("owner_id", userId)
+    .order("last_message_at", { ascending: false });
 
   if (error) return [];
 
-  return data
-    .filter((room) =>
-      room.chat_room_member.some((m) => m.member_id === userId),
-    )
-    .map((room) => ({
-      id: room.id,
-      name: room.name,
-      memberCount: room.chat_room_member.length,
-    }));
+  return data.map((room) => ({
+    id: room.id,
+    name: room.name,
+    modelSlug: room.model_slug,
+    lastMessageAt: room.last_message_at,
+  }));
 }
 
 export async function fetchRoom(
@@ -60,11 +49,12 @@ export async function fetchRoom(
 ): Promise<RoomDetails | null> {
   const { data, error } = await supabase
     .from("chat_room")
-    .select("id, name, chat_room_member!inner ()")
+    .select("id, name, model_slug")
     .eq("id", roomId)
-    .eq("chat_room_member.member_id", userId)
-    .single();
+    .eq("owner_id", userId)
+    .maybeSingle();
 
   if (error) return null;
-  return { id: data.id, name: data.name };
+  if (data == null) return null;
+  return { id: data.id, name: data.name, modelSlug: data.model_slug };
 }
