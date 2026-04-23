@@ -137,11 +137,14 @@ export async function sendMessage(data: {
   }
 
   try {
-    const { text: assistantText } = await generateAssistantText({
-      modelSlug: room.model_slug,
-      system: `You are a helpful AI assistant inside Paralect Chat. Keep answers clear, concise, and practical unless the user asks for more depth.`,
-      messages: toModelMessages(history),
-    });
+    const assistantText = (
+      await generateAssistantText({
+        modelSlug: room.model_slug,
+        system:
+          "You are a helpful AI assistant inside Paralect Chat. Keep answers clear, concise, and practical unless the user asks for more depth.",
+        messages: toModelMessages(history),
+      })
+    ).text;
 
     const { data: assistantMessageRow, error: assistantMessageError } =
       await supabase

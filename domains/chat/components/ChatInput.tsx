@@ -38,10 +38,14 @@ export function ChatInput({ roomId, author }: Props) {
 
     setMessage("");
     const id = crypto.randomUUID();
+    const assistantId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
     const result = await sendMessage.mutateAsync({
       id,
+      assistantId,
       text,
       roomId,
+      createdAt,
       author,
     });
 

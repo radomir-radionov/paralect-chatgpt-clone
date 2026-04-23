@@ -1,40 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   LogOutIcon,
-  MessageSquareIcon,
-  PlusIcon,
+  Trash2Icon,
   UserRoundIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
+import { ActionButton } from "@shared/components/ui/action-button";
 import { Button } from "@shared/components/ui/button";
-import { getAiModelBySlug } from "@shared/lib/ai/model-registry";
+import { AiKnotMark } from "@shared/assets/AiKnotMark";
 import { cn } from "@shared/lib/utils";
 
 import { SignOutButton } from "@domains/auth/components/SignOutButton";
+import { useDeleteRoom } from "@domains/chat/mutations/useDeleteRoom";
 import { useJoinedRooms } from "@domains/chat/queries/useRooms";
 
 export function ChatSidebar({ userId }: { userId: string }) {
+  const router = useRouter();
   const params = useParams();
   const activeRoomId = params?.id as string | undefined;
   const { data: rooms = [] } = useJoinedRooms(userId);
+  const deleteRoomMutation = useDeleteRoom(userId);
 
   return (
     <aside className="flex flex-col w-64 border-r bg-muted/30 h-full shrink-0">
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <Link
           href="/"
-          className="font-semibold tracking-tight text-foreground text-sm"
+          className="inline-flex items-center justify-center size-8 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+          aria-label="AI Chat"
+          title="AI Chat"
         >
-          AI Chat
+          <AiKnotMark className="size-6" />
         </Link>
-        <Button variant="ghost" size="icon-sm" title="New chat" asChild>
-          <Link href="/rooms/new">
-            <PlusIcon className="size-4" />
-          </Link>
-        </Button>
       </div>
 
       <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -42,7 +43,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
           <p className="text-xs text-muted-foreground px-2 py-4 text-center">
             No chats yet.{" "}
             <Link
-              href="/rooms/new"
+              href="/"
               className="underline underline-offset-2 hover:text-foreground transition-colors"
             >
               Start one
@@ -50,28 +51,53 @@ export function ChatSidebar({ userId }: { userId: string }) {
           </p>
         ) : (
           rooms.map((room) => {
-            const model = getAiModelBySlug(room.modelSlug);
-
             return (
-              <Link
+              <div
                 key={room.id}
-                href={`/rooms/${room.id}`}
                 className={cn(
-                  "flex items-start gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
+                  "group relative px-3 py-2 rounded-md text-sm transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
                   activeRoomId === room.id
                     ? "bg-accent text-accent-foreground font-medium"
                     : "text-muted-foreground",
                 )}
               >
-                <MessageSquareIcon className="size-4 shrink-0 mt-0.5" />
-                <span className="min-w-0 flex-1">
+                <Link
+                  href={`/rooms/${room.id}`}
+                  className="block min-w-0 pr-8"
+                >
                   <span className="block truncate">{room.name}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground/80">
-                    {model?.label ?? room.modelSlug}
-                  </span>
-                </span>
-              </Link>
+                </Link>
+
+                <ActionButton
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Delete chat"
+                  requireAreYouSure
+                  areYouSureDescription="This will permanently delete this chat and all of its messages."
+                  className={cn(
+                    "absolute right-1.5 top-1/2 -translate-y-1/2",
+                    "z-10",
+                    "opacity-0 group-hover:opacity-100 transition-opacity",
+                    "text-destructive hover:text-destructive hover:bg-destructive/10",
+                  )}
+                  disabled={deleteRoomMutation.isPending}
+                  action={async () => {
+                    const result = await deleteRoomMutation.mutateAsync({
+                      roomId: room.id,
+                    });
+                    if (result.error) return result;
+
+                    toast.success("Chat deleted");
+                    if (activeRoomId === room.id) {
+                      router.push("/");
+                    }
+                    return { error: false };
+                  }}
+                >
+                  <Trash2Icon className="size-4" />
+                </ActionButton>
+              </div>
             );
           })
         )}

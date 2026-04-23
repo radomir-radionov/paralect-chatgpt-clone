@@ -13,6 +13,13 @@ export const AI_MODELS = [
     label: "Google Gemini 2.5 Flash",
     description: "Fast Gemini model tuned for responsive interactive chat.",
   },
+  {
+    slug: "groq:llama-3.3-70b-versatile",
+    provider: "groq",
+    providerModelId: "llama-3.3-70b-versatile",
+    label: "Groq Llama 3.3 70B",
+    description: "High-quality Groq-hosted model (OpenAI-compatible endpoint).",
+  },
 ] as const;
 
 export type AiModelDefinition = (typeof AI_MODELS)[number];

@@ -8,24 +8,6 @@ import {
   applyMessageStatus,
   replaceMessage,
 } from "@domains/chat/queries/messagesCache";
-import type { Message } from "@domains/chat/types/chat.types";
-
-type SendMessageInput = {
-  id: string;
-  assistantId: string;
-  text: string;
-  roomId: string;
-  createdAt: string;
-  author: {
-    id: string;
-    name: string;
-    image_url: string | null;
-  };
-};
-
-type SendMessageResult =
-  | { error: false }
-  | { error: true; message: string; userMessage?: Message };
 
 const CHAT_PACING_ENABLED = process.env.NEXT_PUBLIC_CHAT_PACING !== "0";
 
@@ -100,7 +82,6 @@ async function paceAssistantReveal(options: {
         const rateCharsPerMs = remainingChars / remainingTimeMs;
         charsToReveal = Math.ceil(rateCharsPerMs * dtMs);
       } else {
-        // While streaming is still in progress, reveal at a steady baseline rate.
         const rateCharsPerMs = options.pacing.baselineCharsPerSec / 1000;
         charsToReveal = Math.ceil(rateCharsPerMs * dtMs);
       }
@@ -154,20 +135,32 @@ async function readTextStream(
   if (remainder) onChunk(remainder);
 }
 
-export function useSendMessage() {
+type Input = {
+  roomId: string;
+  userMessageId: string;
+  assistantId: string;
+  createdAt: string;
+};
+
+type Result =
+  | { error: false }
+  | { error: true; message: string };
+
+export function useStreamAssistantReply() {
   const queryClient = useQueryClient();
 
-  return useMutation<SendMessageResult, Error, SendMessageInput>({
-    mutationFn: async ({ id, assistantId, text, roomId, createdAt }) => {
-      const url = `/api/rooms/${roomId}/messages/stream`;
-      const body = JSON.stringify({ id, assistantId, text });
-
+  return useMutation<Result, Error, Input>({
+    mutationFn: async ({ roomId, userMessageId, assistantId, createdAt }) => {
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await fetch(`/api/rooms/${roomId}/messages/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body,
+          body: JSON.stringify({
+            mode: "assistant_only",
+            userMessageId,
+            assistantId,
+          }),
         });
       } catch (err) {
         const message =
@@ -176,7 +169,7 @@ export function useSendMessage() {
       }
 
       if (!response.ok) {
-        let message = "Failed to send message";
+        let message = "Failed to generate a response";
         try {
           const data = (await response.json()) as { message?: string };
           if (typeof data.message === "string") message = data.message;
@@ -246,8 +239,12 @@ export function useSendMessage() {
           status: "error",
         });
 
-        const message =
+        let message =
           err instanceof Error ? err.message : "Streaming response failed";
+        if (message === "Failed to fetch") {
+          message = "Streaming connection was interrupted";
+        }
+
         return { error: true as const, message };
       }
 
@@ -257,20 +254,10 @@ export function useSendMessage() {
 
       return { error: false as const };
     },
-    onMutate: async ({ id, assistantId, text, roomId, author, createdAt }) => {
-      appendOptimisticMessage(queryClient, roomId, {
-        id,
-        text,
-        created_at: createdAt,
-        author_id: author.id,
-        role: "user",
-        author: { name: author.name, image_url: author.image_url },
-        status: "pending",
-      });
-
+    onMutate: ({ roomId, assistantId, createdAt }) => {
       appendOptimisticMessage(queryClient, roomId, {
         id: assistantId,
-        text: "",
+        text: "Thinking…",
         created_at: createdAt,
         author_id: null,
         role: "assistant",
@@ -280,48 +267,16 @@ export function useSendMessage() {
     },
     onSuccess: (result, variables) => {
       if (result.error) {
-        if (result.userMessage) {
-          replaceMessage(queryClient, variables.roomId, {
-            ...result.userMessage,
-            status: "success",
-          });
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.joinedRooms(variables.author.id),
-          });
-        } else {
-          applyMessageStatus(queryClient, variables.roomId, variables.id, "error");
-          applyMessageStatus(
-            queryClient,
-            variables.roomId,
-            variables.assistantId,
-            "error",
-          );
-        }
+        applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "error");
         return;
       }
 
-      applyMessageStatus(queryClient, variables.roomId, variables.id, "success");
-      applyMessageStatus(
-        queryClient,
-        variables.roomId,
-        variables.assistantId,
-        "success",
-      );
-
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.joinedRooms(variables.author.id),
-      });
-
+      applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "success");
       queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.roomId) });
     },
     onError: (_err, variables) => {
-      applyMessageStatus(queryClient, variables.roomId, variables.id, "error");
-      applyMessageStatus(
-        queryClient,
-        variables.roomId,
-        variables.assistantId,
-        "error",
-      );
+      applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "error");
     },
   });
 }
+

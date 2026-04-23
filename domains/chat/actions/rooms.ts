@@ -12,23 +12,17 @@ import {
   startRoomWithFirstMessageSchema,
   updateRoomModelSchema,
 } from "@domains/chat/schemas/rooms";
-import { sendMessage } from "@domains/chat/actions/messages";
 
-function toRoomNameFromFirstMessage(text: string): string {
-  const normalized = text
-    .trim()
-    .replaceAll(/\s+/g, " ")
-    .replaceAll(/[\r\n]+/g, " ");
+const DEFAULT_ROOM_NAME = "AI Chat";
 
-  const max = 60;
-  if (normalized.length <= max) return normalized;
+function deriveRoomNameFromText(text: string): string {
+  const normalized = text.replaceAll(/\s+/g, " ").trim();
+  if (normalized.length === 0) return DEFAULT_ROOM_NAME;
 
-  // Avoid truncating mid-word when possible.
-  const sliced = normalized.slice(0, max);
-  const lastSpace = sliced.lastIndexOf(" ");
-  const safe =
-    lastSpace >= 24 ? sliced.slice(0, lastSpace) : sliced;
-  return `${safe}…`;
+  const maxLen = 60;
+  if (normalized.length <= maxLen) return normalized;
+
+  return `${normalized.slice(0, maxLen).trimEnd()}…`;
 }
 
 export async function createRoom(unsafeData: z.infer<typeof createRoomSchema>) {
@@ -83,10 +77,11 @@ export async function startRoomWithFirstMessage(
 
   const supabase = createSupabaseAdminClient();
 
+  const derivedRoomName = deriveRoomNameFromText(data.text);
   const { data: room, error: roomError } = await supabase
     .from("chat_room")
     .insert({
-      name: toRoomNameFromFirstMessage(data.text),
+      name: derivedRoomName,
       is_public: false,
       owner_id: user.id,
       model_slug: data.modelSlug,
@@ -98,16 +93,30 @@ export async function startRoomWithFirstMessage(
     return { error: true, message: "Failed to create room" };
   }
 
-  const sendResult = await sendMessage({
-    id: data.messageId,
-    text: data.text,
-    roomId: room.id,
-  });
+  const { data: userMessageRow, error: userMessageError } = await supabase
+    .from("message")
+    .insert({
+      id: data.messageId,
+      text: data.text.trim(),
+      chat_room_id: room.id,
+      author_id: user.id,
+      role: "user",
+    })
+    .select("created_at")
+    .single();
 
-  if (sendResult.error) {
+  if (userMessageError || userMessageRow == null) {
     // Room is created; allow the client to navigate into it anyway.
-    return { error: true, message: sendResult.message, roomId: room.id };
+    return { error: true, message: "Failed to send message", roomId: room.id };
   }
+
+  await supabase
+    .from("chat_room")
+    .update({
+      name: derivedRoomName,
+      last_message_at: userMessageRow.created_at,
+    })
+    .eq("id", room.id);
 
   return { error: false, roomId: room.id };
 }

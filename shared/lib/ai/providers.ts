@@ -2,7 +2,7 @@ import "server-only";
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import { generateText, type ModelMessage } from "ai";
+import { generateText, streamText, type ModelMessage } from "ai";
 
 import { getProviderApiKey } from "./env";
 import { getAiModelBySlug, type AiModelDefinition, type AiModelSlug } from "./model-registry";
@@ -13,11 +13,33 @@ function resolveLanguageModel(model: AiModelDefinition) {
       return createOpenAI({
         apiKey: getProviderApiKey("openai"),
       })(model.providerModelId);
+    case "groq":
+      return createOpenAI({
+        name: "groq",
+        baseURL: "https://api.groq.com/openai/v1",
+        apiKey: getProviderApiKey("groq"),
+      })(model.providerModelId);
     case "google":
       return createGoogleGenerativeAI({
         apiKey: getProviderApiKey("google"),
       })(model.providerModelId);
   }
+}
+
+function getModelOrThrow(modelSlug: AiModelSlug): AiModelDefinition {
+  const model = getAiModelBySlug(modelSlug);
+  if (model == null) {
+    throw new Error(`Unsupported AI model: ${modelSlug}`);
+  }
+  return model;
+}
+
+function getResolvedLanguageModel(modelSlug: AiModelSlug) {
+  const model = getModelOrThrow(modelSlug);
+  return {
+    model,
+    languageModel: resolveLanguageModel(model),
+  };
 }
 
 export async function generateAssistantText({
@@ -29,14 +51,10 @@ export async function generateAssistantText({
   messages: ModelMessage[];
   system: string;
 }) {
-  const model = getAiModelBySlug(modelSlug);
-
-  if (model == null) {
-    throw new Error(`Unsupported AI model: ${modelSlug}`);
-  }
+  const { model, languageModel } = getResolvedLanguageModel(modelSlug);
 
   const result = await generateText({
-    model: resolveLanguageModel(model),
+    model: languageModel,
     system,
     messages,
   });
@@ -49,5 +67,28 @@ export async function generateAssistantText({
   return {
     model,
     text,
+  };
+}
+
+export function streamAssistantText({
+  modelSlug,
+  messages,
+  system,
+}: {
+  modelSlug: AiModelSlug;
+  messages: ModelMessage[];
+  system: string;
+}) {
+  const { model, languageModel } = getResolvedLanguageModel(modelSlug);
+
+  const result = streamText({
+    model: languageModel,
+    system,
+    messages,
+  });
+
+  return {
+    model,
+    textStream: result.textStream,
   };
 }
