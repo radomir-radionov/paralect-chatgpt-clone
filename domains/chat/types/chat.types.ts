@@ -1,3 +1,18 @@
+export type MessageAttachment = {
+  id: string;
+  kind: "image";
+  mime_type: string;
+  size_bytes: number;
+  width?: number | null;
+  height?: number | null;
+  /**
+   * Client-only: used for optimistic messages to show local previews before the
+   * corresponding `message_attachment` row exists and `/api/.../attachments/:id`
+   * can resolve.
+   */
+  preview_url?: string;
+};
+
 export type Message = {
   id: string;
   text: string;
@@ -8,6 +23,7 @@ export type Message = {
     name: string;
     image_url: string | null;
   };
+  attachments?: MessageAttachment[];
   error_message?: string | null;
 };
 

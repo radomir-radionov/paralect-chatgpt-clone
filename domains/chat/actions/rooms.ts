@@ -77,7 +77,7 @@ export async function startRoomWithFirstMessage(
 
   const supabase = createSupabaseAdminClient();
 
-  const derivedRoomName = deriveRoomNameFromText(data.text);
+  const derivedRoomName = deriveRoomNameFromText(data.text.trim() || "Image");
   const { data: room, error: roomError } = await supabase
     .from("chat_room")
     .insert({
@@ -117,6 +117,25 @@ export async function startRoomWithFirstMessage(
       last_message_at: userMessageRow.created_at,
     })
     .eq("id", room.id);
+
+  const attachments = data.attachments ?? [];
+  if (attachments.length > 0) {
+    await supabase.from("message_attachment").insert(
+      attachments.map((a) => ({
+        id: a.id,
+        message_id: data.messageId,
+        chat_room_id: room.id,
+        owner_id: user.id,
+        kind: "image" as const,
+        storage_bucket: "chat-attachments",
+        storage_path: a.storagePath,
+        mime_type: a.mimeType,
+        size_bytes: a.sizeBytes,
+        width: typeof a.width === "number" ? a.width : null,
+        height: typeof a.height === "number" ? a.height : null,
+      })),
+    );
+  }
 
   return { error: false, roomId: room.id };
 }

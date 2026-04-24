@@ -5,13 +5,14 @@ import remarkGfm from "remark-gfm";
 
 import { cn } from "@shared/lib/utils";
 
-import type { Message, MessageStatus } from "@domains/chat/types/chat.types";
+import type { Message, MessageAttachment, MessageStatus } from "@domains/chat/types/chat.types";
 
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
 type Props = Message & {
+  roomId?: string;
   isOwn: boolean;
   isGrouped?: boolean;
   status?: MessageStatus;
@@ -20,10 +21,12 @@ type Props = Message & {
 
 export function ChatMessage({
   text,
+  roomId,
   author,
   created_at,
   status,
   error_message,
+  attachments,
   isOwn,
   isGrouped = false,
   ref,
@@ -42,6 +45,46 @@ export function ChatMessage({
       : !isOwn && isError && rawText.trim().length === 0
         ? fallbackError
         : rawText;
+
+  const renderAttachments = (items: MessageAttachment[] | undefined) => {
+    if (!roomId) return null;
+    if (!items || items.length === 0) return null;
+
+    return (
+      <div className="mb-2 flex flex-wrap gap-2">
+        {items
+          .filter((a) => a.kind === "image")
+          .map((a) => {
+            const src = a.preview_url ?? `/api/rooms/${roomId}/attachments/${a.id}`;
+            return (
+              <a
+                key={a.id}
+                href={src}
+                target="_blank"
+                rel="noreferrer"
+                className="block"
+                aria-label="Open image"
+              >
+                <span
+                  className={cn(
+                    "block h-32 w-32 overflow-hidden rounded-lg",
+                    "border border-border/60 bg-muted/40",
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                </span>
+              </a>
+            );
+          })}
+      </div>
+    );
+  };
 
   if (isOwn) {
     return (
@@ -62,6 +105,7 @@ export function ChatMessage({
             isError && "bg-destructive text-white",
           )}
         >
+          {renderAttachments(attachments)}
           <p className="wrap-break-words whitespace-pre-wrap">{content}</p>
         </div>
       </div>
@@ -92,6 +136,7 @@ export function ChatMessage({
           isError && "bg-destructive/10 text-destructive",
         )}
       >
+        {renderAttachments(attachments)}
         <div
           className={cn(
             "wrap-break-word leading-relaxed",

@@ -95,6 +95,73 @@ export type Database = {
           },
         ];
       };
+      message_attachment: {
+        Row: {
+          chat_room_id: string;
+          created_at: string;
+          height: number | null;
+          id: string;
+          kind: string;
+          message_id: string;
+          mime_type: string;
+          owner_id: string;
+          size_bytes: number;
+          storage_bucket: string;
+          storage_path: string;
+          width: number | null;
+        };
+        Insert: {
+          chat_room_id: string;
+          created_at?: string;
+          height?: number | null;
+          id?: string;
+          kind?: string;
+          message_id: string;
+          mime_type: string;
+          owner_id: string;
+          size_bytes: number;
+          storage_bucket?: string;
+          storage_path: string;
+          width?: number | null;
+        };
+        Update: {
+          chat_room_id?: string;
+          created_at?: string;
+          height?: number | null;
+          id?: string;
+          kind?: string;
+          message_id?: string;
+          mime_type?: string;
+          owner_id?: string;
+          size_bytes?: number;
+          storage_bucket?: string;
+          storage_path?: string;
+          width?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "message_attachment_chat_room_id_fkey";
+            columns: ["chat_room_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_room";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_attachment_message_id_fkey";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "message";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_attachment_owner_id_fkey";
+            columns: ["owner_id"];
+            isOneToOne: false;
+            referencedRelation: "user_profile";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       user_profile: {
         Row: {
           created_at: string;

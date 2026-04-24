@@ -7,12 +7,90 @@ import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
 
 type PersistedHistoryRow = {
+  id: string;
   role: "assistant" | "user";
   text: string;
 };
 
-function toModelMessages(messages: PersistedHistoryRow[]): ModelMessage[] {
-  return messages.map((m) => ({ role: m.role, content: m.text }));
+type PersistedAttachmentRow = {
+  id: string;
+  message_id: string;
+  storage_bucket: string;
+  storage_path: string;
+  mime_type: string;
+};
+
+type IncomingAttachment = {
+  id: string;
+  storagePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number;
+  height?: number;
+  kind?: "image";
+};
+
+async function toModelMessages(options: {
+  readonly modelSlug: string;
+  readonly messages: PersistedHistoryRow[];
+  readonly attachments: PersistedAttachmentRow[];
+  readonly supabase: ReturnType<typeof createSupabaseAdminClient>;
+}): Promise<ModelMessage[]> {
+  const model = getAiModelBySlug(options.modelSlug);
+  const supportsVision = model?.provider === "openai" || model?.provider === "google";
+
+  const byMessageId = new Map<string, PersistedAttachmentRow[]>();
+  for (const a of options.attachments) {
+    const existing = byMessageId.get(a.message_id);
+    if (existing) existing.push(a);
+    else byMessageId.set(a.message_id, [a]);
+  }
+
+  return Promise.all(
+    options.messages.map(async (m) => {
+      if (m.role !== "user") {
+        return { role: m.role, content: m.text } satisfies ModelMessage;
+      }
+
+      const messageText = m.text.trim()
+        ? m.text
+        : (byMessageId.get(m.id)?.length ?? 0) > 0
+          ? "User sent an image."
+          : m.text;
+
+      if (!supportsVision) {
+        const count = byMessageId.get(m.id)?.length ?? 0;
+        const suffix =
+          count > 0
+            ? `\n\n[${count} image(s) attached, but this model does not support vision.]`
+            : "";
+        return { role: "user", content: `${messageText}${suffix}` } satisfies ModelMessage;
+      }
+
+      const attachments = byMessageId.get(m.id) ?? [];
+      const imageParts = await Promise.all(
+        attachments.map(async (a) => {
+          const { data } = await options.supabase.storage
+            .from(a.storage_bucket)
+            .createSignedUrl(a.storage_path, 60 * 5);
+          const url = data?.signedUrl;
+          if (!url) return null;
+          return {
+            type: "image" as const,
+            image: new URL(url),
+            mediaType: a.mime_type,
+          };
+        }),
+      );
+
+      const parts = [
+        { type: "text" as const, text: messageText },
+        ...imageParts.filter((p): p is NonNullable<typeof p> => p != null),
+      ];
+
+      return { role: "user", content: parts } satisfies ModelMessage;
+    }),
+  );
 }
 
 export async function POST(
@@ -43,6 +121,7 @@ export async function POST(
   const mode =
     raw.mode === "assistant_only" ? ("assistant_only" as const) : ("user_and_assistant" as const);
   const assistantMessageId = raw.assistantId;
+  const incomingAttachments = raw.attachments;
 
   if (typeof assistantMessageId !== "string") {
     return NextResponse.json(
@@ -83,7 +162,17 @@ export async function POST(
       );
     }
 
-    if (typeof text !== "string" || !text.trim()) {
+    const attachments =
+      Array.isArray(incomingAttachments) ? (incomingAttachments as IncomingAttachment[]) : [];
+
+    if (typeof text !== "string") {
+      return NextResponse.json(
+        { error: true, message: "Missing message text" },
+        { status: 400 },
+      );
+    }
+
+    if (!text.trim() && attachments.length === 0) {
       return NextResponse.json(
         { error: true, message: "Message cannot be empty" },
         { status: 400 },
@@ -113,6 +202,34 @@ export async function POST(
       .from("chat_room")
       .update({ last_message_at: userMessageRow.created_at })
       .eq("id", room.id);
+
+    if (attachments.length > 0) {
+      const rows = attachments
+        .filter(
+          (a): a is IncomingAttachment =>
+            typeof a?.id === "string" &&
+            typeof a?.storagePath === "string" &&
+            typeof a?.mimeType === "string" &&
+            typeof a?.sizeBytes === "number",
+        )
+        .map((a) => ({
+          id: a.id,
+          message_id: userMessageId,
+          chat_room_id: room.id,
+          owner_id: user.id,
+          kind: "image" as const,
+          storage_bucket: "chat-attachments",
+          storage_path: a.storagePath,
+          mime_type: a.mimeType,
+          size_bytes: a.sizeBytes,
+          width: typeof a.width === "number" ? a.width : null,
+          height: typeof a.height === "number" ? a.height : null,
+        }));
+
+      if (rows.length > 0) {
+        await supabase.from("message_attachment").insert(rows);
+      }
+    }
   } else {
     const userMessageId = raw.userMessageId;
     if (typeof userMessageId !== "string") {
@@ -140,13 +257,26 @@ export async function POST(
 
   const { data: history, error: historyError } = await supabase
     .from("message")
-    .select("role, text")
+    .select("id, role, text")
     .eq("chat_room_id", room.id)
     .order("created_at", { ascending: true });
 
   if (historyError || history == null) {
     return NextResponse.json(
       { error: true, message: "Failed to build the AI prompt history" },
+      { status: 500 },
+    );
+  }
+
+  const { data: attachments, error: attachmentsError } = await supabase
+    .from("message_attachment")
+    .select("id, message_id, storage_bucket, storage_path, mime_type")
+    .eq("chat_room_id", room.id)
+    .order("created_at", { ascending: true });
+
+  if (attachmentsError) {
+    return NextResponse.json(
+      { error: true, message: "Failed to load message attachments" },
       { status: 500 },
     );
   }
@@ -159,11 +289,18 @@ export async function POST(
 
       (async () => {
         try {
+          const modelMessages = await toModelMessages({
+            modelSlug,
+            messages: history as PersistedHistoryRow[],
+            attachments: (attachments ?? []) as PersistedAttachmentRow[],
+            supabase,
+          });
+
           const { textStream } = streamAssistantText({
             modelSlug,
             system:
               "You are a helpful AI assistant inside Paralect Chat. Keep answers clear, concise, and practical unless the user asks for more depth.",
-            messages: toModelMessages(history as PersistedHistoryRow[]),
+            messages: modelMessages,
           });
 
           for await (const delta of textStream) {
