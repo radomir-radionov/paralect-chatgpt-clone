@@ -49,11 +49,17 @@ export default function EmailPasswordForm({
 
     if (mode === "signup") {
       try {
-        const { isNewRegistration } = await signUp.mutateAsync({
+        const { isNewRegistration, hasSession } = await signUp.mutateAsync({
           email,
           password,
           emailRedirectTo: `${window.location.origin}/welcome`,
         });
+
+        if (hasSession) {
+          window.location.assign("/");
+          return;
+        }
+
         setStatus(
           isNewRegistration
             ? "Check your inbox to confirm the new account."
