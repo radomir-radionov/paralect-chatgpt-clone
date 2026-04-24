@@ -6,6 +6,7 @@ import type z from "zod";
 import { startRoomWithFirstMessage } from "@domains/chat/actions/rooms";
 import { chatKeys } from "@domains/chat/queries/keys";
 import type { startRoomWithFirstMessageSchema } from "@domains/chat/schemas/rooms";
+import { broadcastChatRoomsInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
 type Input = z.infer<typeof startRoomWithFirstMessageSchema>;
 
@@ -18,11 +19,14 @@ export function useStartRoomWithFirstMessage(userId: string | null) {
 
   return useMutation<Result, Error, Input>({
     mutationFn: (data) => startRoomWithFirstMessage(data),
-    onSettled: async () => {
+    onSuccess: async (result) => {
+      if (result.error) return;
       if (!userId) return;
       await queryClient.invalidateQueries({
         queryKey: chatKeys.joinedRooms(userId),
       });
+
+      broadcastChatRoomsInvalidation();
     },
   });
 }

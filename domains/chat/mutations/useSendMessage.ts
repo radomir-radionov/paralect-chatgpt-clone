@@ -9,6 +9,7 @@ import {
   replaceMessage,
 } from "@domains/chat/queries/messagesCache";
 import type { Message, MessageAttachment } from "@domains/chat/types/chat.types";
+import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
 type SendMessageInput = {
   id: string;
@@ -320,6 +321,8 @@ export function useSendMessage() {
           queryClient.invalidateQueries({
             queryKey: chatKeys.joinedRooms(variables.author.id),
           });
+
+          broadcastChatInvalidation({ roomId: variables.roomId });
         } else {
           applyMessageStatus(queryClient, variables.roomId, variables.id, "error");
           applyMessageStatus(
@@ -345,6 +348,8 @@ export function useSendMessage() {
       });
 
       queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.roomId) });
+
+      broadcastChatInvalidation({ roomId: variables.roomId });
     },
     onError: (_err, variables) => {
       applyMessageStatus(queryClient, variables.roomId, variables.id, "error");

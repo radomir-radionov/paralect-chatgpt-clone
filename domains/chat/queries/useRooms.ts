@@ -16,6 +16,7 @@ export const joinedRoomsQueryOptions = (userId: string) =>
     queryKey: chatKeys.joinedRooms(userId),
     queryFn: () => fetchJoinedRooms(getSupabaseBrowserClient(), userId),
     enabled: Boolean(userId),
+    refetchOnWindowFocus: true,
   });
 
 export const roomQueryOptions = (roomId: string, userId: string) =>
@@ -23,6 +24,7 @@ export const roomQueryOptions = (roomId: string, userId: string) =>
     queryKey: chatKeys.room(roomId),
     queryFn: () => fetchRoom(getSupabaseBrowserClient(), roomId, userId),
     enabled: Boolean(roomId && userId),
+    refetchOnWindowFocus: true,
   });
 
 export function useJoinedRooms(userId: string) {

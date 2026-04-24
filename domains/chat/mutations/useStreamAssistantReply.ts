@@ -8,6 +8,7 @@ import {
   applyMessageStatus,
   replaceMessage,
 } from "@domains/chat/queries/messagesCache";
+import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
 const CHAT_PACING_ENABLED = process.env.NEXT_PUBLIC_CHAT_PACING !== "0";
 
@@ -273,6 +274,8 @@ export function useStreamAssistantReply() {
 
       applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "success");
       queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.roomId) });
+
+      broadcastChatInvalidation({ roomId: variables.roomId });
     },
     onError: (_err, variables) => {
       applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "error");
