@@ -9,7 +9,7 @@ import { HydrateClient } from "@shared/lib/query/HydrateClient";
 
 import { chatKeys } from "@domains/chat/queries/keys";
 import { fetchJoinedRooms } from "@domains/chat/queries/room-fetchers";
-import { ChatSidebarNoSSR } from "../../domains/chat/components/ChatSidebarNoSSR";
+import { ChatSidebar } from "@domains/chat/components/ChatSidebar";
 
 export default async function RoomsLayout({
   children,
@@ -32,7 +32,7 @@ export default async function RoomsLayout({
   return (
     <div className="flex h-screen overflow-hidden">
       <HydrateClient state={dehydrate(queryClient)}>
-        <ChatSidebarNoSSR userId={user.id} />
+        <ChatSidebar userId={user.id} />
       </HydrateClient>
       <main className="flex-1 min-w-0 overflow-hidden">{children}</main>
     </div>
