@@ -16,8 +16,8 @@ export async function fetchProfile(
     .from("user_profile")
     .select("id, name, image_url")
     .eq("id", userId)
-    .single();
+    .limit(1);
 
   if (error) return null;
-  return data;
+  return data?.[0] ?? null;
 }

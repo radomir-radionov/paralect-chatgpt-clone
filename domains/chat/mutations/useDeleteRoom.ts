@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { deleteRoom } from "@domains/chat/actions/rooms";
 import { chatKeys } from "@domains/chat/queries/keys";
+import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
 export function useDeleteRoom(userId: string) {
   const queryClient = useQueryClient();
@@ -19,6 +20,8 @@ export function useDeleteRoom(userId: string) {
           queryKey: chatKeys.messages(variables.roomId),
         }),
       ]);
+
+      broadcastChatInvalidation({ roomId: variables.roomId });
     },
   });
 }

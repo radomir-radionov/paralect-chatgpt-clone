@@ -7,6 +7,7 @@ import { updateRoomModel } from "@domains/chat/actions/rooms";
 import { chatKeys } from "@domains/chat/queries/keys";
 import type { RoomDetails } from "@domains/chat/queries/useRooms";
 import type { updateRoomModelSchema } from "@domains/chat/schemas/rooms";
+import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
 type UpdateRoomModelInput = z.infer<typeof updateRoomModelSchema>;
 
@@ -42,7 +43,8 @@ export function useUpdateRoomModel(userId: string) {
         );
       }
     },
-    onSettled: async (_result, _err, variables) => {
+    onSuccess: async (result, variables) => {
+      if (result.error) return;
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: chatKeys.room(variables.roomId),
@@ -51,6 +53,8 @@ export function useUpdateRoomModel(userId: string) {
           queryKey: chatKeys.joinedRooms(userId),
         }),
       ]);
+
+      broadcastChatInvalidation({ roomId: variables.roomId });
     },
   });
 }

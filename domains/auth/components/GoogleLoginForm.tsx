@@ -44,7 +44,7 @@ export default function GoogleLoginForm({
 
   const card = embedded ? (
     <Card>
-      <CardContent className="pt-6">{googleButton}</CardContent>
+      <CardContent>{googleButton}</CardContent>
     </Card>
   ) : (
     <Card>

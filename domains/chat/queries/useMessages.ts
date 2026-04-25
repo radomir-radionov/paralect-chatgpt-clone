@@ -37,6 +37,7 @@ export const messagesInfiniteQueryOptions = (roomId: string) =>
     initialPageParam: null as string | null,
     getNextPageParam: getNextPageParamForMessages,
     enabled: Boolean(roomId),
+    refetchOnWindowFocus: true,
   });
 
 export function useMessages(roomId: string) {

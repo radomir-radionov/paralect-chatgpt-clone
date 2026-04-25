@@ -199,6 +199,7 @@ export function RoomClient({
             {messages.map((message, index) => (
               <ChatMessage
                 key={message.id}
+                roomId={roomId}
                 {...message}
                 isOwn={message.author_id === userId}
                 isGrouped={isGrouped(message, messages[index - 1])}

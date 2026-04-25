@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/lib/supabase/types/database";
 
-import type { CachedMessage } from "@domains/chat/types/chat.types";
+import type { CachedMessage, MessageAttachment } from "@domains/chat/types/chat.types";
 
 export const MESSAGES_PAGE_SIZE = 25;
 export const MESSAGES_INITIAL_PAGE_SIZE = 10;
@@ -18,7 +18,7 @@ export async function fetchMessagesPage(
   let query = supabase
     .from("message")
     .select(
-      "id, text, created_at, author_id, role, error_message, author:user_profile (name, image_url)",
+      "id, text, created_at, author_id, role, error_message, author:user_profile (name, image_url), attachments:message_attachment (id, kind, mime_type, size_bytes, width, height, original_name, extracted_chars)",
     )
     .eq("chat_room_id", roomId)
     .order("created_at", { ascending: false })
@@ -37,6 +37,9 @@ export async function fetchMessagesPage(
     author_id: message.author_id,
     role: message.role,
     error_message: message.error_message,
+    attachments:
+      (message as unknown as { attachments?: MessageAttachment[] }).attachments ??
+      undefined,
     author:
       message.role === "assistant"
         ? { name: "Assistant", image_url: null }

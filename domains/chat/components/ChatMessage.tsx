@@ -1,17 +1,19 @@
 import type { Ref } from "react";
+import { FileTextIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@shared/lib/utils";
 
-import type { Message, MessageStatus } from "@domains/chat/types/chat.types";
+import type { Message, MessageAttachment, MessageStatus } from "@domains/chat/types/chat.types";
 
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
 type Props = Message & {
+  roomId?: string;
   isOwn: boolean;
   isGrouped?: boolean;
   status?: MessageStatus;
@@ -20,10 +22,12 @@ type Props = Message & {
 
 export function ChatMessage({
   text,
+  roomId,
   author,
   created_at,
   status,
   error_message,
+  attachments,
   isOwn,
   isGrouped = false,
   ref,
@@ -42,6 +46,66 @@ export function ChatMessage({
       : !isOwn && isError && rawText.trim().length === 0
         ? fallbackError
         : rawText;
+
+  const renderAttachments = (items: MessageAttachment[] | undefined) => {
+    if (!roomId) return null;
+    if (!items || items.length === 0) return null;
+    const imageItems = items.filter((a) => a.kind === "image");
+    const documentItems = items.filter((a) => a.kind === "document");
+
+    return (
+      <div className="mb-2 flex flex-wrap gap-2">
+        {imageItems.map((a) => {
+            const src = a.preview_url ?? `/api/rooms/${roomId}/attachments/${a.id}`;
+            return (
+              <a
+                key={a.id}
+                href={src}
+                target="_blank"
+                rel="noreferrer"
+                className="block"
+                aria-label="Open image"
+              >
+                <span
+                  className={cn(
+                    "block h-32 w-32 overflow-hidden rounded-lg",
+                    "border border-border/60 bg-muted/40",
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                </span>
+              </a>
+            );
+          })}
+        {documentItems.map((a) => {
+          const href = `/api/rooms/${roomId}/attachments/${a.id}`;
+          const label = a.original_name?.trim() || "Document";
+          return (
+            <a
+              key={a.id}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                "flex max-w-64 items-center gap-2 rounded-lg border border-border/60",
+                "bg-background/60 px-2.5 py-2 text-current hover:bg-background/80",
+              )}
+              aria-label={`Open ${label}`}
+            >
+              <FileTextIcon className="size-4 shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+            </a>
+          );
+        })}
+      </div>
+    );
+  };
 
   if (isOwn) {
     return (
@@ -62,6 +126,7 @@ export function ChatMessage({
             isError && "bg-destructive text-white",
           )}
         >
+          {renderAttachments(attachments)}
           <p className="wrap-break-words whitespace-pre-wrap">{content}</p>
         </div>
       </div>
@@ -92,6 +157,7 @@ export function ChatMessage({
           isError && "bg-destructive/10 text-destructive",
         )}
       >
+        {renderAttachments(attachments)}
         <div
           className={cn(
             "wrap-break-word leading-relaxed",

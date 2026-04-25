@@ -17,7 +17,8 @@ export function useSignOut() {
     },
     onSuccess: async () => {
       queryClient.setQueryData(authKeys.currentUser, null);
-      await queryClient.invalidateQueries({ queryKey: authKeys.all });
+      await queryClient.cancelQueries({ queryKey: authKeys.all });
+      queryClient.removeQueries({ queryKey: authKeys.all });
     },
   });
 }

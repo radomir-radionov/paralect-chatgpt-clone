@@ -8,7 +8,8 @@ import {
   applyMessageStatus,
   replaceMessage,
 } from "@domains/chat/queries/messagesCache";
-import type { Message } from "@domains/chat/types/chat.types";
+import type { Message, MessageAttachment } from "@domains/chat/types/chat.types";
+import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
 type SendMessageInput = {
   id: string;
@@ -16,6 +17,13 @@ type SendMessageInput = {
   text: string;
   roomId: string;
   createdAt: string;
+  attachments?: Array<
+    Pick<MessageAttachment, "id" | "kind" | "mime_type" | "size_bytes" | "width" | "height"> & {
+      storagePath: string;
+      preview_url?: string;
+      original_name?: string;
+    }
+  >;
   author: {
     id: string;
     name: string;
@@ -158,9 +166,19 @@ export function useSendMessage() {
   const queryClient = useQueryClient();
 
   return useMutation<SendMessageResult, Error, SendMessageInput>({
-    mutationFn: async ({ id, assistantId, text, roomId, createdAt }) => {
+    mutationFn: async ({ id, assistantId, text, roomId, createdAt, attachments }) => {
       const url = `/api/rooms/${roomId}/messages/stream`;
-      const body = JSON.stringify({ id, assistantId, text });
+      const bodyAttachments = attachments?.map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        storagePath: a.storagePath,
+        mimeType: a.mime_type,
+        sizeBytes: a.size_bytes,
+        width: a.width ?? undefined,
+        height: a.height ?? undefined,
+        originalName: a.original_name ?? undefined,
+      }));
+      const body = JSON.stringify({ id, assistantId, text, attachments: bodyAttachments });
 
       let response: Response;
       try {
@@ -257,7 +275,15 @@ export function useSendMessage() {
 
       return { error: false as const };
     },
-    onMutate: async ({ id, assistantId, text, roomId, author, createdAt }) => {
+    onMutate: async ({
+      id,
+      assistantId,
+      text,
+      roomId,
+      author,
+      createdAt,
+      attachments,
+    }) => {
       appendOptimisticMessage(queryClient, roomId, {
         id,
         text,
@@ -265,6 +291,16 @@ export function useSendMessage() {
         author_id: author.id,
         role: "user",
         author: { name: author.name, image_url: author.image_url },
+        attachments: attachments?.map((a) => ({
+          id: a.id,
+          kind: a.kind,
+          mime_type: a.mime_type,
+          size_bytes: a.size_bytes,
+          width: a.width ?? null,
+          height: a.height ?? null,
+          original_name: a.original_name ?? null,
+          preview_url: a.preview_url,
+        })),
         status: "pending",
       });
 
@@ -288,6 +324,8 @@ export function useSendMessage() {
           queryClient.invalidateQueries({
             queryKey: chatKeys.joinedRooms(variables.author.id),
           });
+
+          broadcastChatInvalidation({ roomId: variables.roomId });
         } else {
           applyMessageStatus(queryClient, variables.roomId, variables.id, "error");
           applyMessageStatus(
@@ -313,6 +351,8 @@ export function useSendMessage() {
       });
 
       queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.roomId) });
+
+      broadcastChatInvalidation({ roomId: variables.roomId });
     },
     onError: (_err, variables) => {
       applyMessageStatus(queryClient, variables.roomId, variables.id, "error");

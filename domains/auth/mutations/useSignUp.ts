@@ -14,6 +14,7 @@ type SignUpInput = {
 
 export type SignUpResult = {
   isNewRegistration: boolean;
+  hasSession: boolean;
 };
 
 export function useSignUp() {
@@ -32,7 +33,8 @@ export function useSignUp() {
 
       const identities = data.user?.identities;
       const isNewRegistration = identities != null && identities.length > 0;
-      return { isNewRegistration };
+      const hasSession = data.session != null;
+      return { isNewRegistration, hasSession };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: authKeys.currentUser });

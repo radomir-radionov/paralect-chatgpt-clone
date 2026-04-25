@@ -6,6 +6,7 @@ import type z from "zod";
 import { createRoom } from "@domains/chat/actions/rooms";
 import { chatKeys } from "@domains/chat/queries/keys";
 import type { createRoomSchema } from "@domains/chat/schemas/rooms";
+import { broadcastChatRoomsInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
 type CreateRoomInput = z.infer<typeof createRoomSchema>;
 
@@ -20,6 +21,8 @@ export function useCreateRoom(userId: string | null) {
       await queryClient.invalidateQueries({
         queryKey: chatKeys.joinedRooms(userId),
       });
+
+      broadcastChatRoomsInvalidation();
     },
   });
 }
