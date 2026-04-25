@@ -21,6 +21,7 @@ type SendMessageInput = {
     Pick<MessageAttachment, "id" | "kind" | "mime_type" | "size_bytes" | "width" | "height"> & {
       storagePath: string;
       preview_url?: string;
+      original_name?: string;
     }
   >;
   author: {
@@ -175,6 +176,7 @@ export function useSendMessage() {
         sizeBytes: a.size_bytes,
         width: a.width ?? undefined,
         height: a.height ?? undefined,
+        originalName: a.original_name ?? undefined,
       }));
       const body = JSON.stringify({ id, assistantId, text, attachments: bodyAttachments });
 
@@ -296,6 +298,7 @@ export function useSendMessage() {
           size_bytes: a.size_bytes,
           width: a.width ?? null,
           height: a.height ?? null,
+          original_name: a.original_name ?? null,
           preview_url: a.preview_url,
         })),
         status: "pending",

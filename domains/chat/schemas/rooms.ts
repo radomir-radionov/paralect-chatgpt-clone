@@ -15,14 +15,16 @@ export const startRoomWithFirstMessageSchema = z.object({
     .array(
       z.object({
         id: z.string().uuid(),
+        kind: z.enum(["image", "document"]).default("image"),
         storagePath: z.string().min(1),
         mimeType: z.string().min(1),
         sizeBytes: z.number().int().nonnegative(),
         width: z.number().int().positive().optional(),
         height: z.number().int().positive().optional(),
+        originalName: z.string().min(1).max(255).optional(),
       }),
     )
-    .max(4)
+    .max(6)
     .optional(),
 }).refine(
   (v) => v.text.trim().length > 0 || (v.attachments?.length ?? 0) > 0,

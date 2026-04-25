@@ -18,7 +18,7 @@ export async function fetchMessagesPage(
   let query = supabase
     .from("message")
     .select(
-      "id, text, created_at, author_id, role, error_message, author:user_profile (name, image_url), attachments:message_attachment (id, kind, mime_type, size_bytes, width, height)",
+      "id, text, created_at, author_id, role, error_message, author:user_profile (name, image_url), attachments:message_attachment (id, kind, mime_type, size_bytes, width, height, original_name, extracted_chars)",
     )
     .eq("chat_room_id", roomId)
     .order("created_at", { ascending: false })

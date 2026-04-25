@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import { FileTextIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -49,12 +50,12 @@ export function ChatMessage({
   const renderAttachments = (items: MessageAttachment[] | undefined) => {
     if (!roomId) return null;
     if (!items || items.length === 0) return null;
+    const imageItems = items.filter((a) => a.kind === "image");
+    const documentItems = items.filter((a) => a.kind === "document");
 
     return (
       <div className="mb-2 flex flex-wrap gap-2">
-        {items
-          .filter((a) => a.kind === "image")
-          .map((a) => {
+        {imageItems.map((a) => {
             const src = a.preview_url ?? `/api/rooms/${roomId}/attachments/${a.id}`;
             return (
               <a
@@ -82,6 +83,26 @@ export function ChatMessage({
               </a>
             );
           })}
+        {documentItems.map((a) => {
+          const href = `/api/rooms/${roomId}/attachments/${a.id}`;
+          const label = a.original_name?.trim() || "Document";
+          return (
+            <a
+              key={a.id}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                "flex max-w-64 items-center gap-2 rounded-lg border border-border/60",
+                "bg-background/60 px-2.5 py-2 text-current hover:bg-background/80",
+              )}
+              aria-label={`Open ${label}`}
+            >
+              <FileTextIcon className="size-4 shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+            </a>
+          );
+        })}
       </div>
     );
   };

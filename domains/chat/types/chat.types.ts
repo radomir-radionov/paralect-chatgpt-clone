@@ -1,10 +1,13 @@
 export type MessageAttachment = {
   id: string;
-  kind: "image";
+  kind: "image" | "document";
   mime_type: string;
   size_bytes: number;
   width?: number | null;
   height?: number | null;
+  original_name?: string | null;
+  extracted_text?: string | null;
+  extracted_chars?: number | null;
   /**
    * Client-only: used for optimistic messages to show local previews before the
    * corresponding `message_attachment` row exists and `/api/.../attachments/:id`

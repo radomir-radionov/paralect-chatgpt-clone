@@ -99,11 +99,14 @@ export type Database = {
         Row: {
           chat_room_id: string;
           created_at: string;
+          extracted_chars: number | null;
+          extracted_text: string | null;
           height: number | null;
           id: string;
           kind: string;
           message_id: string;
           mime_type: string;
+          original_name: string | null;
           owner_id: string;
           size_bytes: number;
           storage_bucket: string;
@@ -113,11 +116,14 @@ export type Database = {
         Insert: {
           chat_room_id: string;
           created_at?: string;
+          extracted_chars?: number | null;
+          extracted_text?: string | null;
           height?: number | null;
           id?: string;
           kind?: string;
           message_id: string;
           mime_type: string;
+          original_name?: string | null;
           owner_id: string;
           size_bytes: number;
           storage_bucket?: string;
@@ -127,11 +133,14 @@ export type Database = {
         Update: {
           chat_room_id?: string;
           created_at?: string;
+          extracted_chars?: number | null;
+          extracted_text?: string | null;
           height?: number | null;
           id?: string;
           kind?: string;
           message_id?: string;
           mime_type?: string;
+          original_name?: string | null;
           owner_id?: string;
           size_bytes?: number;
           storage_bucket?: string;
