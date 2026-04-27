@@ -65,6 +65,7 @@ export function ChatMessage({
       label: string;
     }) => {
       const [failed, setFailed] = useState(false);
+      const isLocalPreview = src.startsWith("blob:") || src.startsWith("data:");
 
       const thumb = failed ? (
         <span
@@ -91,7 +92,9 @@ export function ChatMessage({
           <img
             src={src}
             alt=""
-            loading="lazy"
+            loading={isLocalPreview ? "eager" : "lazy"}
+            fetchPriority={isLocalPreview ? "high" : "auto"}
+            decoding="async"
             className="h-full w-full object-cover"
             onError={() => setFailed(true)}
           />

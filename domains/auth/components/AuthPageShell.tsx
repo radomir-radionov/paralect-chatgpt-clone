@@ -80,9 +80,7 @@ export function AuthPageShell({
           </div>
         </header>
       ) : null}
-      <main className={mainClassName}>
-        {children}
-      </main>
+      <main className={mainClassName}>{children}</main>
     </div>
   );
 }

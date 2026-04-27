@@ -10,19 +10,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@shared/components/ui/card";
-import { createSupabaseServerClient } from "@shared/lib/supabase/server";
+import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
 
 export const metadata: Metadata = {
   title: "Page not found",
 };
 
 export default async function NotFound() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const href = user ? "/" : "/login";
+  const origin = await getRequestOrigin();
+  const res = await fetch(new URL("/api/profile/me", origin), {
+    method: "GET",
+    cache: "no-store",
+  });
+  const href = res.status === 401 ? "/login" : "/";
 
   return (
     <div className="min-h-screen bg-background px-4 py-12 text-foreground">

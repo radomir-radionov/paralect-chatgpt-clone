@@ -1,6 +1,4 @@
-import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
-
-import { fetchJoinedRooms } from "@domains/chat/queries/room-fetchers";
+import { getJoinedRooms } from "@domains/chat/api/getJoinedRooms";
 import { ChatSidebarClient } from "@domains/chat/components/ChatSidebarClient";
 
 type Props = {
@@ -8,8 +6,7 @@ type Props = {
 };
 
 export async function ChatSidebar({ userId }: Props) {
-  const supabase = createSupabaseAdminClient();
-  const rooms = await fetchJoinedRooms(supabase, userId);
+  const rooms = await getJoinedRooms();
 
   return <ChatSidebarClient userId={userId} initialRooms={rooms} />;
 }

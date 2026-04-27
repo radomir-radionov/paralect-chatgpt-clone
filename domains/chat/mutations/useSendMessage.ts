@@ -165,6 +165,20 @@ async function readTextStream(
 export function useSendMessage() {
   const queryClient = useQueryClient();
 
+  function extractStreamedProviderError(text: string): string | null {
+    const match = text.match(/\[(OpenAI|Gemini|Groq) request failed:\s*([^\]]+)\]/);
+    if (!match) return null;
+
+    const raw = match[2]?.trim();
+    if (!raw) return "AI request failed";
+
+    if (raw.includes("insufficient_quota")) {
+      return "AI provider quota exceeded. Check your API billing/plan or switch to a different provider/model.";
+    }
+
+    return raw;
+  }
+
   return useMutation<SendMessageResult, Error, SendMessageInput>({
     mutationFn: async ({ id, assistantId, text, roomId, createdAt, attachments }) => {
       const url = `/api/rooms/${roomId}/messages/stream`;
@@ -272,6 +286,11 @@ export function useSendMessage() {
       streamFinished = true;
       if (!CHAT_PACING_ENABLED) flushNoPacing();
       await pacingTask;
+
+      const providerError = extractStreamedProviderError(receivedText);
+      if (providerError) {
+        return { error: true as const, message: providerError };
+      }
 
       return { error: false as const };
     },
