@@ -1,26 +1,20 @@
+import "server-only";
+
 import type { User } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
 
 import { apiUrl } from "@shared/lib/http/apiUrl";
+import { getForwardedRequestHeaders } from "@shared/lib/http/getForwardedRequestHeaders";
 import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
 import type { ApiError } from "@shared/lib/http/fetchApiOk";
 
-async function getRequestCookieHeader() {
-  const cookieStore = await cookies();
-  return cookieStore
-    .getAll()
-    .map((cookie) => `${cookie.name}=${cookie.value}`)
-    .join("; ");
-}
-
 export async function getMe(options?: { readonly origin?: string }) {
   const origin = options?.origin ?? (await getRequestOrigin());
-  const cookie = await getRequestCookieHeader();
+  const headers = await getForwardedRequestHeaders();
 
   const res = await fetch(apiUrl("/api/auth/me", origin), {
     method: "GET",
     cache: "no-store",
-    headers: cookie ? { cookie } : undefined,
+    headers,
   });
 
   if (res.status === 401) return null;
