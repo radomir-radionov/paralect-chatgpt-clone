@@ -8,7 +8,6 @@ const AUTH_ROUTES = new Set(["/login", "/email-password", "/google-login"]);
 
 function isProtectedPath(pathname: string) {
   return (
-    pathname === "/" ||
     pathname === "/profile" ||
     pathname === "/rooms" ||
     pathname.startsWith("/rooms/")
@@ -51,8 +50,8 @@ function redirectCleanUrlWithCookies(
 
 /**
  * Next.js proxy (middleware): Supabase session refresh + route gating.
- * Guests hitting `/` or `/profile` are sent to `/login`. Guests can still reach
- * other routes (e.g. `/welcome`). Signed-in users hitting auth routes go to `/`.
+ * Guests can reach `/` for anonymous chat, while personal room/profile routes
+ * still require a session. Signed-in users hitting auth routes go to `/`.
  */
 export async function proxy(request: NextRequest) {
   const state: MiddlewareResponseState = {

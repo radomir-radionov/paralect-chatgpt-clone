@@ -1,5 +1,8 @@
+ "use client";
+
 import type { Ref } from "react";
-import { FileTextIcon } from "lucide-react";
+import { FileTextIcon, ImageOffIcon } from "lucide-react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -48,48 +51,92 @@ export function ChatMessage({
         : rawText;
 
   const renderAttachments = (items: MessageAttachment[] | undefined) => {
-    if (!roomId) return null;
     if (!items || items.length === 0) return null;
     const imageItems = items.filter((a) => a.kind === "image");
     const documentItems = items.filter((a) => a.kind === "document");
 
+    const ImageThumb = ({
+      src,
+      linkHref,
+      label,
+    }: {
+      src: string;
+      linkHref?: string;
+      label: string;
+    }) => {
+      const [failed, setFailed] = useState(false);
+
+      const thumb = failed ? (
+        <span
+          className={cn(
+            "flex h-32 w-32 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg",
+            "border border-border/60 bg-muted/20 text-white",
+          )}
+          aria-label={`${label} (not available)`}
+          title="Image is no longer available"
+        >
+          <ImageOffIcon className="size-5 opacity-80" />
+          <span className="text-[11px] font-medium leading-none">
+            Image unavailable
+          </span>
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "block h-32 w-32 overflow-hidden rounded-lg",
+            "border border-border/60 bg-muted/40",
+          )}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover"
+            onError={() => setFailed(true)}
+          />
+        </span>
+      );
+
+      return linkHref ? (
+        <a
+          href={linkHref}
+          target="_blank"
+          rel="noreferrer"
+          className="block"
+          aria-label={label}
+        >
+          {thumb}
+        </a>
+      ) : (
+        <span className="block" aria-label={label}>
+          {thumb}
+        </span>
+      );
+    };
+
     return (
       <div className="mb-2 flex flex-wrap gap-2">
         {imageItems.map((a) => {
-            const src = a.preview_url ?? `/api/rooms/${roomId}/attachments/${a.id}`;
+            const src =
+              a.preview_url ?? (roomId ? `/api/rooms/${roomId}/attachments/${a.id}` : null);
+            if (!src) return null;
+            const linkHref = roomId ? src : undefined;
             return (
-              <a
+              <ImageThumb
                 key={a.id}
-                href={src}
-                target="_blank"
-                rel="noreferrer"
-                className="block"
-                aria-label="Open image"
-              >
-                <span
-                  className={cn(
-                    "block h-32 w-32 overflow-hidden rounded-lg",
-                    "border border-border/60 bg-muted/40",
-                  )}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={src}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-cover"
-                  />
-                </span>
-              </a>
+                src={src}
+                linkHref={linkHref}
+                label={roomId ? "Open image" : "Attached image"}
+              />
             );
           })}
         {documentItems.map((a) => {
-          const href = `/api/rooms/${roomId}/attachments/${a.id}`;
           const label = a.original_name?.trim() || "Document";
-          return (
+          return roomId ? (
             <a
               key={a.id}
-              href={href}
+              href={`/api/rooms/${roomId}/attachments/${a.id}`}
               target="_blank"
               rel="noreferrer"
               className={cn(
@@ -101,6 +148,18 @@ export function ChatMessage({
               <FileTextIcon className="size-4 shrink-0 opacity-70" />
               <span className="min-w-0 flex-1 truncate">{label}</span>
             </a>
+          ) : (
+            <span
+              key={a.id}
+              className={cn(
+                "flex max-w-64 items-center gap-2 rounded-lg border border-border/60",
+                "bg-background/60 px-2.5 py-2 text-current",
+              )}
+              aria-label={`Attached ${label}`}
+            >
+              <FileTextIcon className="size-4 shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+            </span>
           );
         })}
       </div>
