@@ -3,22 +3,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
-
+import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
 import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
 import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
 import {
   appendOptimisticMessage,
   applyMessageStatus,
 } from "@domains/chat/queries/messagesCache";
-import {
-  CHAT_DOCUMENTS_BUCKET,
-  fileExtensionForDocument,
-} from "@domains/chat/lib/chatDocuments";
-import {
-  CHAT_IMAGES_BUCKET,
-  fileExtensionForMime,
-} from "@domains/chat/lib/chatImages";
 
 type Props = {
   roomId: string;
@@ -127,63 +118,65 @@ export function ChatInput({ roomId, author }: Props) {
         const hasDocuments = pendingDocuments.length > 0;
 
         if (hasImages || hasDocuments) {
-          const supabase = getSupabaseBrowserClient();
           const uploaded: NonNullable<typeof attachments> = [];
 
           for (const [index, img] of pendingImages.entries()) {
-            const ext = fileExtensionForMime(img.file.type) ?? "bin";
             const attachmentId = imageAttachmentIds[index] ?? crypto.randomUUID();
-            const path = `${author.id}/${roomId}/${id}/${attachmentId}.${ext}`;
+            try {
+              const path = await uploadChatAttachment({
+                file: img.file,
+                kind: "image",
+                attachmentId,
+                messageId: id,
+                roomId,
+              });
 
-            const { error } = await supabase.storage
-              .from(CHAT_IMAGES_BUCKET)
-              .upload(path, img.file, { contentType: img.file.type, upsert: false });
-
-            if (error) {
-              toast.error(error.message || "Failed to upload image");
+              uploaded.push({
+                id: attachmentId,
+                kind: "image",
+                mime_type: img.file.type || "application/octet-stream",
+                size_bytes: img.file.size,
+                width: null,
+                height: null,
+                storagePath: path,
+                preview_url: img.previewUrl,
+              });
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Failed to upload image");
               pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
               applyMessageStatus(queryClient, roomId, id, "error");
               return;
             }
-
-            uploaded.push({
-              id: attachmentId,
-              kind: "image",
-              mime_type: img.file.type || "application/octet-stream",
-              size_bytes: img.file.size,
-              width: null,
-              height: null,
-              storagePath: path,
-              preview_url: img.previewUrl,
-            });
           }
 
           for (const [index, doc] of pendingDocuments.entries()) {
-            const ext = fileExtensionForDocument(doc.file) ?? "bin";
             const attachmentId = documentAttachmentIds[index] ?? crypto.randomUUID();
-            const path = `${author.id}/${roomId}/${id}/${attachmentId}.${ext}`;
+            try {
+              const path = await uploadChatAttachment({
+                file: doc.file,
+                kind: "document",
+                attachmentId,
+                messageId: id,
+                roomId,
+                originalName: doc.file.name,
+              });
 
-            const { error } = await supabase.storage
-              .from(CHAT_DOCUMENTS_BUCKET)
-              .upload(path, doc.file, { contentType: doc.file.type, upsert: false });
-
-            if (error) {
-              toast.error(error.message || "Failed to upload document");
+              uploaded.push({
+                id: attachmentId,
+                kind: "document",
+                mime_type: doc.file.type || "application/octet-stream",
+                size_bytes: doc.file.size,
+                width: null,
+                height: null,
+                storagePath: path,
+                original_name: doc.file.name,
+              });
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Failed to upload document");
               pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
               applyMessageStatus(queryClient, roomId, id, "error");
               return;
             }
-
-            uploaded.push({
-              id: attachmentId,
-              kind: "document",
-              mime_type: doc.file.type || "application/octet-stream",
-              size_bytes: doc.file.size,
-              width: null,
-              height: null,
-              storagePath: path,
-              original_name: doc.file.name,
-            });
           }
 
           attachments = uploaded;

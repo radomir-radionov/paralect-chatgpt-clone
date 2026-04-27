@@ -16,7 +16,7 @@ import {
   DEFAULT_AI_MODEL_SLUG,
   type AiModelSlug,
 } from "@shared/lib/ai/model-registry";
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
+import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
 import { cn } from "@shared/lib/utils";
 
 import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
@@ -26,15 +26,9 @@ import { usePendingChatDocuments } from "@domains/chat/hooks/usePendingChatDocum
 import { usePendingChatImages } from "@domains/chat/hooks/usePendingChatImages";
 import {
   CHAT_DOCUMENT_ACCEPT,
-  CHAT_DOCUMENTS_BUCKET,
   CHAT_DOCUMENTS_MAX_ATTACHMENTS,
-  fileExtensionForDocument,
 } from "@domains/chat/lib/chatDocuments";
-import {
-  CHAT_IMAGES_BUCKET,
-  CHAT_IMAGES_MAX_ATTACHMENTS,
-  fileExtensionForMime,
-} from "@domains/chat/lib/chatImages";
+import { CHAT_IMAGES_MAX_ATTACHMENTS } from "@domains/chat/lib/chatImages";
 import { useStartRoomWithFirstMessage } from "@domains/chat/mutations/useStartRoomWithFirstMessage";
 
 const MAX_LENGTH = 2000;
@@ -107,54 +101,54 @@ export function NewRoomComposer() {
         return;
       }
 
-      const supabase = getSupabaseBrowserClient();
       const uploaded: NonNullable<typeof attachments> = [];
 
       for (const img of pendingImages) {
-        const ext = fileExtensionForMime(img.file.type) ?? "bin";
         const attachmentId = crypto.randomUUID();
-        const path = `${user.id}/tmp/${messageId}/${attachmentId}.${ext}`;
+        try {
+          const path = await uploadChatAttachment({
+            file: img.file,
+            kind: "image",
+            attachmentId,
+            messageId,
+          });
 
-        const { error } = await supabase.storage
-          .from(CHAT_IMAGES_BUCKET)
-          .upload(path, img.file, { contentType: img.file.type, upsert: false });
-
-        if (error) {
-          toast.error(error.message || "Failed to upload image");
+          uploaded.push({
+            id: attachmentId,
+            kind: "image",
+            storagePath: path,
+            mimeType: img.file.type || "application/octet-stream",
+            sizeBytes: img.file.size,
+          });
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to upload image");
           return;
         }
-
-        uploaded.push({
-          id: attachmentId,
-          kind: "image",
-          storagePath: path,
-          mimeType: img.file.type || "application/octet-stream",
-          sizeBytes: img.file.size,
-        });
       }
 
       for (const doc of pendingDocuments) {
-        const ext = fileExtensionForDocument(doc.file) ?? "bin";
         const attachmentId = crypto.randomUUID();
-        const path = `${user.id}/tmp/${messageId}/${attachmentId}.${ext}`;
+        try {
+          const path = await uploadChatAttachment({
+            file: doc.file,
+            kind: "document",
+            attachmentId,
+            messageId,
+            originalName: doc.file.name,
+          });
 
-        const { error } = await supabase.storage
-          .from(CHAT_DOCUMENTS_BUCKET)
-          .upload(path, doc.file, { contentType: doc.file.type, upsert: false });
-
-        if (error) {
-          toast.error(error.message || "Failed to upload document");
+          uploaded.push({
+            id: attachmentId,
+            kind: "document",
+            storagePath: path,
+            mimeType: doc.file.type || "application/octet-stream",
+            sizeBytes: doc.file.size,
+            originalName: doc.file.name,
+          });
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to upload document");
           return;
         }
-
-        uploaded.push({
-          id: attachmentId,
-          kind: "document",
-          storagePath: path,
-          mimeType: doc.file.type || "application/octet-stream",
-          sizeBytes: doc.file.size,
-          originalName: doc.file.name,
-        });
       }
 
       attachments = uploaded;

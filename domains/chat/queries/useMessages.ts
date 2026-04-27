@@ -5,13 +5,11 @@ import {
   useInfiniteQuery,
 } from "@tanstack/react-query";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
-
 import type { CachedMessage } from "@domains/chat/types/chat.types";
 
 import { chatKeys } from "./keys";
+import { clientGetMessagesPage } from "./clientChatFetchers";
 import {
-  fetchMessagesPage,
   getNextPageParamForMessages,
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
@@ -28,8 +26,7 @@ export const messagesInfiniteQueryOptions = (roomId: string) =>
   infiniteQueryOptions({
     queryKey: chatKeys.messages(roomId),
     queryFn: ({ pageParam }) =>
-      fetchMessagesPage(
-        getSupabaseBrowserClient(),
+      clientGetMessagesPage(
         roomId,
         pageParam,
         pageParam == null ? MESSAGES_INITIAL_PAGE_SIZE : MESSAGES_PAGE_SIZE,

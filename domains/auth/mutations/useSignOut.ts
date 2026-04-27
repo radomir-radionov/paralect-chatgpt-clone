@@ -2,8 +2,6 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
-
 import { authKeys } from "@domains/auth/queries/keys";
 
 export function useSignOut() {
@@ -11,9 +9,20 @@ export function useSignOut() {
 
   return useMutation({
     mutationFn: async () => {
-      const supabase = getSupabaseBrowserClient();
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      const res = await fetch("/api/auth/sign-out", { method: "POST" });
+      let json: unknown = null;
+      try {
+        json = await res.json();
+      } catch {
+        // ignore
+      }
+      const message =
+        typeof (json as { message?: string } | null)?.message === "string"
+          ? (json as { message: string }).message
+          : "Sign-out failed";
+      if (!res.ok || (json as { error?: boolean } | null)?.error === true) {
+        throw new Error(message);
+      }
     },
     onSuccess: async () => {
       queryClient.setQueryData(authKeys.currentUser, null);
