@@ -1,9 +1,9 @@
 import { GuestChat } from "@domains/chat/components/GuestChat";
 import { NewRoomComposer } from "@domains/chat/components/NewRoomComposer";
-import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
+import { getMe } from "@domains/auth/api/getMe";
 
 export default async function RoomsIndexPage() {
-  const user = await getCurrentUser();
+  const user = await getMe();
 
   if (user == null) {
     return <GuestChat />;

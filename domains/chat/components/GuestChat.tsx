@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@shared/components/ui/button";
+import { buttonVariants } from "@shared/components/ui/button";
 import {
   AI_MODELS,
   DEFAULT_AI_MODEL_SLUG,
@@ -15,7 +15,10 @@ import { cn } from "@shared/lib/utils";
 import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
 import { ChatMessage } from "@domains/chat/components/ChatMessage";
 import { GUEST_FREE_QUESTION_LIMIT } from "@domains/chat/lib/guestQuotaConstants";
-import type { MessageAttachment, MessageStatus } from "@domains/chat/types/chat.types";
+import type {
+  MessageAttachment,
+  MessageStatus,
+} from "@domains/chat/types/chat.types";
 
 const STORAGE_KEY = "paralect_guest_chat";
 
@@ -131,7 +134,10 @@ export function GuestChat() {
         setRemainingQuestions(clampRemainingQuestions(stored.remaining));
       }
 
-      if (stored?.modelSlug && AI_MODELS.some((model) => model.slug === stored.modelSlug)) {
+      if (
+        stored?.modelSlug &&
+        AI_MODELS.some((model) => model.slug === stored.modelSlug)
+      ) {
         setModelSlug(stored.modelSlug);
       }
 
@@ -183,18 +189,19 @@ export function GuestChat() {
   }, [hydrated, messages, modelSlug, remainingQuestions]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
   }, [messages]);
 
   return (
     <div className="flex h-full flex-col">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-        <div className="container mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
+        <div className="container mx-auto flex h-14 max-w-5xl items-center justify-between gap-4">
           <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-              <Link href="/">
-                AI Chat
-              </Link>
+              <Link href="/">AI Chat</Link>
             </h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -219,9 +226,12 @@ export function GuestChat() {
                 </option>
               ))}
             </select>
-            <Button asChild variant="outline" size="sm">
-              <Link href="/login">Sign in</Link>
-            </Button>
+            <Link
+              href="/login"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Sign in
+            </Link>
           </div>
         </div>
       </header>
@@ -234,8 +244,8 @@ export function GuestChat() {
                 Ask your first question.
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free questions.
-                Sign in anytime to save your history.
+                Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free
+                questions. Sign in anytime to save your history.
               </p>
             </div>
           </div>
@@ -270,9 +280,12 @@ export function GuestChat() {
             <p className="mt-1 text-muted-foreground">
               Sign in to keep chatting and save your conversation history.
             </p>
-            <Button asChild size="sm" className="mt-3">
-              <Link href="/login">Sign in or create account</Link>
-            </Button>
+            <Link
+              href="/login"
+              className={buttonVariants({ size: "sm", className: "mt-3" })}
+            >
+              Sign in or create account
+            </Link>
           </div>
         </div>
       )}
@@ -280,8 +293,15 @@ export function GuestChat() {
       <ChatComposerInput
         disabled={isSending || hasReachedQuestionLimit}
         isSending={isSending}
-        placeholder={hasReachedQuestionLimit ? "Sign in to ask more" : "Ask anything…"}
-        onSubmit={async ({ text, pendingImages, pendingDocuments, createdAt }) => {
+        placeholder={
+          hasReachedQuestionLimit ? "Sign in to ask more" : "Ask anything…"
+        }
+        onSubmit={async ({
+          text,
+          pendingImages,
+          pendingDocuments,
+          createdAt,
+        }) => {
           const userMessageId = crypto.randomUUID();
           const assistantMessageId = crypto.randomUUID();
 
@@ -311,7 +331,8 @@ export function GuestChat() {
             text,
             created_at: createdAt,
             role: "user",
-            attachments: userAttachments.length > 0 ? userAttachments : undefined,
+            attachments:
+              userAttachments.length > 0 ? userAttachments : undefined,
             status: "pending",
           };
           const assistantMessage: GuestMessage = {
@@ -442,7 +463,9 @@ export function GuestChat() {
             );
           } catch (error) {
             const errorMessage =
-              error instanceof Error ? error.message : "Streaming response failed";
+              error instanceof Error
+                ? error.message
+                : "Streaming response failed";
             toast.error(errorMessage);
             setMessages((current) =>
               current.map((item) =>

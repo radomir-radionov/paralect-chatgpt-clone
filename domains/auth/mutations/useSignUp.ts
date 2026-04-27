@@ -2,8 +2,6 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
-
 import { authKeys } from "@domains/auth/queries/keys";
 
 type SignUpInput = {
@@ -22,19 +20,33 @@ export function useSignUp() {
 
   return useMutation<SignUpResult, Error, SignUpInput>({
     mutationFn: async ({ email, password, emailRedirectTo }) => {
-      const supabase = getSupabaseBrowserClient();
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+      const res = await fetch("/api/auth/sign-up", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, emailRedirectTo }),
       });
+      let json: unknown = null;
+      try {
+        json = await res.json();
+      } catch {
+        // ignore
+      }
+      const message =
+        typeof (json as { message?: string } | null)?.message === "string"
+          ? (json as { message: string }).message
+          : "Sign-up failed";
+      if (!res.ok || (json as { error?: boolean } | null)?.error === true) {
+        throw new Error(message);
+      }
 
-      if (error) throw error;
-
-      const identities = data.user?.identities;
-      const isNewRegistration = identities != null && identities.length > 0;
-      const hasSession = data.session != null;
-      return { isNewRegistration, hasSession };
+      const payload = json as {
+        isNewRegistration?: boolean;
+        hasSession?: boolean;
+      };
+      return {
+        isNewRegistration: Boolean(payload.isNewRegistration),
+        hasSession: Boolean(payload.hasSession),
+      };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: authKeys.currentUser });

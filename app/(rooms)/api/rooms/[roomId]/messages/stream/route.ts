@@ -51,6 +51,8 @@ type ParsedIncomingDocument = {
   extractedChars: number;
 };
 
+const MAX_ROOM_HISTORY_MESSAGES = 40;
+
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
@@ -453,25 +455,29 @@ export async function POST(
     }
   }
 
-  const { data: history, error: historyError } = await supabase
+  const { data: historyDesc, error: historyError } = await supabase
     .from("message")
     .select("id, role, text")
     .eq("chat_room_id", room.id)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(MAX_ROOM_HISTORY_MESSAGES);
 
-  if (historyError || history == null) {
+  if (historyError || historyDesc == null) {
     return NextResponse.json(
       { error: true, message: "Failed to build the AI prompt history" },
       { status: 500 },
     );
   }
 
+  const history = historyDesc.slice().reverse() as PersistedHistoryRow[];
+  const messageIds = history.map((m) => m.id);
+
   const { data: attachments, error: attachmentsError } = await supabase
     .from("message_attachment")
     .select(
       "id, message_id, kind, storage_bucket, storage_path, mime_type, original_name, extracted_text, extracted_chars",
     )
-    .eq("chat_room_id", room.id)
+    .in("message_id", messageIds)
     .order("created_at", { ascending: true });
 
   if (attachmentsError) {
@@ -491,7 +497,7 @@ export async function POST(
         try {
           const modelMessages = await toModelMessages({
             modelSlug,
-            messages: history as PersistedHistoryRow[],
+            messages: history,
             attachments: (attachments ?? []) as PersistedAttachmentRow[],
             supabase,
           });

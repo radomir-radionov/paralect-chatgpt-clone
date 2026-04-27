@@ -39,6 +39,8 @@ type SendMessageFailure = {
   userMessage?: Message;
 };
 
+const MAX_ROOM_HISTORY_MESSAGES = 40;
+
 function toChatMessage(row: PersistedMessageRow): Message {
   return {
     id: row.id,
@@ -122,19 +124,22 @@ export async function sendMessage(data: {
     .update({ last_message_at: userMessage.created_at })
     .eq("id", room.id);
 
-  const { data: history, error: historyError } = await supabase
+  const { data: historyDesc, error: historyError } = await supabase
     .from("message")
     .select("role, text")
     .eq("chat_room_id", room.id)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(MAX_ROOM_HISTORY_MESSAGES);
 
-  if (historyError || history == null) {
+  if (historyError || historyDesc == null) {
     return {
       error: true,
       message: "Failed to build the AI prompt history",
       userMessage,
     };
   }
+
+  const history = historyDesc.slice().reverse();
 
   try {
     const assistantText = (

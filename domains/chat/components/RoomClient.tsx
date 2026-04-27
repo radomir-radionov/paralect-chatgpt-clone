@@ -77,12 +77,18 @@ export function RoomClient({
     if (streamedForUserMessageIdsRef.current.has(last.id)) return;
     streamedForUserMessageIdsRef.current.add(last.id);
 
-    void streamAssistantReply.mutateAsync({
-      roomId,
-      userMessageId: last.id,
-      assistantId: crypto.randomUUID(),
-      createdAt: last.created_at,
-    });
+    void (async () => {
+      const result = await streamAssistantReply.mutateAsync({
+        roomId,
+        userMessageId: last.id,
+        assistantId: crypto.randomUUID(),
+        createdAt: last.created_at,
+      });
+
+      if (result.error) {
+        toast.error(result.message);
+      }
+    })();
   }, [messages, roomId, streamAssistantReply]);
 
   // Preserve scroll position when loading older messages

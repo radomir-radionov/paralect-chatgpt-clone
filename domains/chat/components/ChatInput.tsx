@@ -1,19 +1,15 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
-
+import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
 import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
 import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
 import {
-  CHAT_DOCUMENTS_BUCKET,
-  fileExtensionForDocument,
-} from "@domains/chat/lib/chatDocuments";
-import {
-  CHAT_IMAGES_BUCKET,
-  fileExtensionForMime,
-} from "@domains/chat/lib/chatImages";
+  appendOptimisticMessage,
+  applyMessageStatus,
+} from "@domains/chat/queries/messagesCache";
 
 type Props = {
   roomId: string;
@@ -26,6 +22,7 @@ type Props = {
 
 export function ChatInput({ roomId, author }: Props) {
   const sendMessage = useSendMessage();
+  const queryClient = useQueryClient();
 
   return (
     <ChatComposerInput
@@ -34,6 +31,62 @@ export function ChatInput({ roomId, author }: Props) {
       onSubmit={async ({ text, pendingImages, pendingDocuments, createdAt }) => {
         const id = crypto.randomUUID();
         const assistantId = crypto.randomUUID();
+
+        const imageAttachmentIds = pendingImages.map(() => crypto.randomUUID());
+        const documentAttachmentIds = pendingDocuments.map(() => crypto.randomUUID());
+
+        const localPreviewAttachments: Array<
+          | {
+              id: string;
+              kind: "image";
+              mime_type: string;
+              size_bytes: number;
+              width: number | null;
+              height: number | null;
+              preview_url: string;
+            }
+          | {
+              id: string;
+              kind: "document";
+              mime_type: string;
+              size_bytes: number;
+              width: null;
+              height: null;
+              original_name: string;
+            }
+        > = [
+          ...pendingImages.map((img, index) => ({
+            id: imageAttachmentIds[index] ?? crypto.randomUUID(),
+            kind: "image" as const,
+            mime_type: img.file.type || "application/octet-stream",
+            size_bytes: img.file.size,
+            width: null,
+            height: null,
+            preview_url: img.previewUrl,
+          })),
+          ...pendingDocuments.map((doc, index) => ({
+            id: documentAttachmentIds[index] ?? crypto.randomUUID(),
+            kind: "document" as const,
+            mime_type: doc.file.type || "application/octet-stream",
+            size_bytes: doc.file.size,
+            width: null,
+            height: null,
+            original_name: doc.file.name,
+          })),
+        ];
+
+        if (localPreviewAttachments.length > 0) {
+          appendOptimisticMessage(queryClient, roomId, {
+            id,
+            text,
+            created_at: createdAt,
+            author_id: author.id,
+            role: "user",
+            author: { name: author.name, image_url: author.image_url },
+            attachments: localPreviewAttachments,
+            status: "pending",
+          });
+        }
 
         let attachments:
           | Array<
@@ -65,61 +118,65 @@ export function ChatInput({ roomId, author }: Props) {
         const hasDocuments = pendingDocuments.length > 0;
 
         if (hasImages || hasDocuments) {
-          const supabase = getSupabaseBrowserClient();
           const uploaded: NonNullable<typeof attachments> = [];
 
-          for (const img of pendingImages) {
-            const ext = fileExtensionForMime(img.file.type) ?? "bin";
-            const attachmentId = crypto.randomUUID();
-            const path = `${author.id}/${roomId}/${id}/${attachmentId}.${ext}`;
+          for (const [index, img] of pendingImages.entries()) {
+            const attachmentId = imageAttachmentIds[index] ?? crypto.randomUUID();
+            try {
+              const path = await uploadChatAttachment({
+                file: img.file,
+                kind: "image",
+                attachmentId,
+                messageId: id,
+                roomId,
+              });
 
-            const { error } = await supabase.storage
-              .from(CHAT_IMAGES_BUCKET)
-              .upload(path, img.file, { contentType: img.file.type, upsert: false });
-
-            if (error) {
-              toast.error(error.message || "Failed to upload image");
+              uploaded.push({
+                id: attachmentId,
+                kind: "image",
+                mime_type: img.file.type || "application/octet-stream",
+                size_bytes: img.file.size,
+                width: null,
+                height: null,
+                storagePath: path,
+                preview_url: img.previewUrl,
+              });
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Failed to upload image");
               pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
+              applyMessageStatus(queryClient, roomId, id, "error");
               return;
             }
-
-            uploaded.push({
-              id: attachmentId,
-              kind: "image",
-              mime_type: img.file.type || "application/octet-stream",
-              size_bytes: img.file.size,
-              width: null,
-              height: null,
-              storagePath: path,
-              preview_url: img.previewUrl,
-            });
           }
 
-          for (const doc of pendingDocuments) {
-            const ext = fileExtensionForDocument(doc.file) ?? "bin";
-            const attachmentId = crypto.randomUUID();
-            const path = `${author.id}/${roomId}/${id}/${attachmentId}.${ext}`;
+          for (const [index, doc] of pendingDocuments.entries()) {
+            const attachmentId = documentAttachmentIds[index] ?? crypto.randomUUID();
+            try {
+              const path = await uploadChatAttachment({
+                file: doc.file,
+                kind: "document",
+                attachmentId,
+                messageId: id,
+                roomId,
+                originalName: doc.file.name,
+              });
 
-            const { error } = await supabase.storage
-              .from(CHAT_DOCUMENTS_BUCKET)
-              .upload(path, doc.file, { contentType: doc.file.type, upsert: false });
-
-            if (error) {
-              toast.error(error.message || "Failed to upload document");
+              uploaded.push({
+                id: attachmentId,
+                kind: "document",
+                mime_type: doc.file.type || "application/octet-stream",
+                size_bytes: doc.file.size,
+                width: null,
+                height: null,
+                storagePath: path,
+                original_name: doc.file.name,
+              });
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Failed to upload document");
               pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
+              applyMessageStatus(queryClient, roomId, id, "error");
               return;
             }
-
-            uploaded.push({
-              id: attachmentId,
-              kind: "document",
-              mime_type: doc.file.type || "application/octet-stream",
-              size_bytes: doc.file.size,
-              width: null,
-              height: null,
-              storagePath: path,
-              original_name: doc.file.name,
-            });
           }
 
           attachments = uploaded;

@@ -2,10 +2,8 @@
 
 import { queryOptions, useQuery } from "@tanstack/react-query";
 
-import { getSupabaseBrowserClient } from "@shared/lib/supabase/client";
-
 import { chatKeys } from "./keys";
-import { fetchJoinedRooms, fetchRoom } from "./room-fetchers";
+import { clientGetJoinedRooms, clientGetRoom } from "./clientChatFetchers";
 
 export type { RoomDetails, RoomListItem } from "./room-fetchers";
 
@@ -14,7 +12,7 @@ export { fetchJoinedRooms, fetchRoom } from "./room-fetchers";
 export const joinedRoomsQueryOptions = (userId: string) =>
   queryOptions({
     queryKey: chatKeys.joinedRooms(userId),
-    queryFn: () => fetchJoinedRooms(getSupabaseBrowserClient(), userId),
+    queryFn: () => clientGetJoinedRooms(),
     enabled: Boolean(userId),
     refetchOnWindowFocus: true,
   });
@@ -22,7 +20,7 @@ export const joinedRoomsQueryOptions = (userId: string) =>
 export const roomQueryOptions = (roomId: string, userId: string) =>
   queryOptions({
     queryKey: chatKeys.room(roomId),
-    queryFn: () => fetchRoom(getSupabaseBrowserClient(), roomId, userId),
+    queryFn: () => clientGetRoom(roomId),
     enabled: Boolean(roomId && userId),
     refetchOnWindowFocus: true,
   });

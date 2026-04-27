@@ -15,13 +15,6 @@ export type RoomDetails = {
   modelSlug: string;
 };
 
-export async function fetchPublicRooms(
-  supabase: SupabaseClient<Database>,
-): Promise<RoomListItem[]> {
-  void supabase;
-  return [];
-}
-
 export async function fetchJoinedRooms(
   supabase: SupabaseClient<Database>,
   userId: string,
