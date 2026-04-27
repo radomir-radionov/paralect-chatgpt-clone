@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { dehydrate } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -18,7 +17,11 @@ export default async function RoomsLayout({
 }) {
   const user = await getCurrentUser();
   if (user == null) {
-    redirect("/login");
+    return (
+      <div className="flex h-screen overflow-hidden">
+        <main className="flex-1 min-w-0 overflow-hidden">{children}</main>
+      </div>
+    );
   }
 
   const queryClient = getQueryClient();

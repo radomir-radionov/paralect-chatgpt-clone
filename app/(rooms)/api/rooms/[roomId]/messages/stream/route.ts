@@ -15,6 +15,7 @@ import {
   fileExtensionForDocument,
 } from "@domains/chat/lib/chatDocuments";
 import { CHAT_IMAGES_MAX_ATTACHMENTS, CHAT_IMAGES_MAX_BYTES } from "@domains/chat/lib/chatImages";
+import { STREAMING_TEXT_HEADERS } from "@shared/lib/http/streamingTextHeaders";
 
 type PersistedHistoryRow = {
   id: string;
@@ -584,10 +585,7 @@ export async function POST(
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Accel-Buffering": "no",
-      "Content-Encoding": "none",
+      ...STREAMING_TEXT_HEADERS,
     },
   });
 }

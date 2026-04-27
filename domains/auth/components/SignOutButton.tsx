@@ -23,7 +23,7 @@ export function SignOutButton({
       disabled={props.disabled ?? signOut.isPending}
       onClick={async () => {
         await signOut.mutateAsync();
-        router.push("/login");
+        router.push("/");
         router.refresh();
       }}
     >
