@@ -7,6 +7,8 @@ import {
 
 import type { CachedMessage } from "@domains/chat/types/chat.types";
 
+import { chatFetchRetry } from "@shared/lib/query/chatFetchRetry";
+
 import { chatKeys } from "./keys";
 import { clientGetMessagesPage } from "./clientChatFetchers";
 import {
@@ -35,6 +37,7 @@ export const messagesInfiniteQueryOptions = (roomId: string) =>
     getNextPageParam: getNextPageParamForMessages,
     enabled: Boolean(roomId),
     refetchOnWindowFocus: true,
+    retry: chatFetchRetry,
   });
 
 export function useMessages(roomId: string) {

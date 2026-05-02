@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type z from "zod";
+import type { z } from "zod";
 
-import { startRoomWithFirstMessage } from "@domains/chat/actions/rooms";
+import { clientStartRoomWithFirstMessage } from "@domains/chat/queries/clientChatFetchers";
 import { chatKeys } from "@domains/chat/queries/keys";
 import type { startRoomWithFirstMessageSchema } from "@domains/chat/schemas/rooms";
 import { broadcastChatRoomsInvalidation } from "@shared/lib/query/chatCrossTabSync";
@@ -18,7 +18,7 @@ export function useStartRoomWithFirstMessage(userId: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation<Result, Error, Input>({
-    mutationFn: (data) => startRoomWithFirstMessage(data),
+    mutationFn: (data) => clientStartRoomWithFirstMessage(data),
     onSuccess: async (result) => {
       if (result.error) return;
       if (!userId) return;
@@ -30,4 +30,3 @@ export function useStartRoomWithFirstMessage(userId: string | null) {
     },
   });
 }
-

@@ -2,6 +2,8 @@
 
 import { queryOptions, useQuery } from "@tanstack/react-query";
 
+import { chatFetchRetry } from "@shared/lib/query/chatFetchRetry";
+
 import { chatKeys } from "./keys";
 import { clientGetJoinedRooms, clientGetRoom } from "./clientChatFetchers";
 
@@ -23,6 +25,7 @@ export const roomQueryOptions = (roomId: string, userId: string) =>
     queryFn: () => clientGetRoom(roomId),
     enabled: Boolean(roomId && userId),
     refetchOnWindowFocus: true,
+    retry: chatFetchRetry,
   });
 
 export function useJoinedRooms(userId: string) {

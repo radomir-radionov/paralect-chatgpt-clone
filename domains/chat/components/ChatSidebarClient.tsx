@@ -96,15 +96,27 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
                     });
                     if (result.error) return result;
 
+                    if (activeRoomId === room.id) {
+                      router.replace("/");
+                    }
+
+                    await queryClient.cancelQueries({
+                      queryKey: chatKeys.room(room.id),
+                    });
+                    await queryClient.cancelQueries({
+                      queryKey: chatKeys.messages(room.id),
+                    });
+                    queryClient.removeQueries({ queryKey: chatKeys.room(room.id) });
+                    queryClient.removeQueries({
+                      queryKey: chatKeys.messages(room.id),
+                    });
+
                     toast.success("Chat deleted");
                     queryClient.setQueryData(
                       chatKeys.joinedRooms(userId),
                       (prev: RoomListItem[] | undefined) =>
                         Array.isArray(prev) ? prev.filter((r) => r.id !== room.id) : prev,
                     );
-                    if (activeRoomId === room.id) {
-                      router.push("/");
-                    }
                     return { error: false };
                   }}
                 >

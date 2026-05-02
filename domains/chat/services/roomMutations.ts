@@ -1,6 +1,5 @@
-"use server";
+import "server-only";
 
-import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import z from "zod";
 
@@ -13,7 +12,6 @@ import {
 } from "@domains/chat/lib/chatDocuments";
 import { CHAT_IMAGES_MAX_ATTACHMENTS, CHAT_IMAGES_MAX_BYTES } from "@domains/chat/lib/chatImages";
 import { parseChatDocument } from "@domains/chat/lib/unstructuredDocuments";
-
 import {
   createRoomSchema,
   deleteRoomSchema,
@@ -198,7 +196,13 @@ async function verifyFirstMessageImages(options: {
   }
 }
 
-export async function createRoom(unsafeData: z.infer<typeof createRoomSchema>) {
+export type CreateRoomResult =
+  | { error: true; message: string }
+  | { error: false; roomId: string };
+
+export async function createRoomMutation(
+  unsafeData: z.infer<typeof createRoomSchema>,
+): Promise<CreateRoomResult> {
   const { success, data } = createRoomSchema.safeParse(unsafeData);
 
   if (!success) {
@@ -235,14 +239,14 @@ export async function createRoom(unsafeData: z.infer<typeof createRoomSchema>) {
     return { error: true, message: "Failed to create room" };
   }
 
-  redirect(`/rooms/${room.id}`);
+  return { error: false, roomId: room.id };
 }
 
-type StartRoomWithFirstMessageResult =
+export type StartRoomWithFirstMessageResult =
   | { error: false; roomId: string }
   | { error: true; message: string; roomId?: string };
 
-export async function startRoomWithFirstMessage(
+export async function startRoomWithFirstMessageMutation(
   unsafeData: z.infer<typeof startRoomWithFirstMessageSchema>,
 ): Promise<StartRoomWithFirstMessageResult> {
   const { success, data } = startRoomWithFirstMessageSchema.safeParse(unsafeData);
@@ -323,7 +327,6 @@ export async function startRoomWithFirstMessage(
     .single();
 
   if (userMessageError || userMessageRow == null) {
-    // Room is created; allow the client to navigate into it anyway.
     return { error: true, message: "Failed to send message", roomId: room.id };
   }
 
@@ -363,7 +366,7 @@ export async function startRoomWithFirstMessage(
   return { error: false, roomId: room.id };
 }
 
-export async function deleteRoom(
+export async function deleteRoomMutation(
   unsafeData: z.infer<typeof deleteRoomSchema>,
 ): Promise<{ error: boolean; message?: string }> {
   const { success, data } = deleteRoomSchema.safeParse(unsafeData);
@@ -378,7 +381,6 @@ export async function deleteRoom(
 
   const supabase = createSupabaseAdminClient();
 
-  // Ensure ownership (match sendMessage pattern)
   const { data: room, error: roomError } = await supabase
     .from("chat_room")
     .select("id")
@@ -390,7 +392,6 @@ export async function deleteRoom(
     return { error: true, message: "Chat not found" };
   }
 
-  // Delete messages explicitly (safe even if DB cascades)
   await supabase.from("message").delete().eq("chat_room_id", room.id);
 
   const { error: deleteError } = await supabase
@@ -406,7 +407,7 @@ export async function deleteRoom(
   return { error: false };
 }
 
-export async function updateRoomModel(
+export async function updateRoomModelMutation(
   unsafeData: z.infer<typeof updateRoomModelSchema>,
 ): Promise<{ error: boolean; message?: string }> {
   const { success, data } = updateRoomModelSchema.safeParse(unsafeData);

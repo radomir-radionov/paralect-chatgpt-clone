@@ -1,7 +1,121 @@
+import { z } from "zod";
+
 import { fetchApiOk } from "@shared/lib/http/fetchApiOk";
+
+import {
+  createRoomSchema,
+  deleteRoomSchema,
+  startRoomWithFirstMessageSchema,
+  updateRoomModelSchema,
+} from "@domains/chat/schemas/rooms";
 
 import type { MessagesPage } from "./message-fetchers";
 import type { RoomDetails, RoomListItem } from "./room-fetchers";
+
+type CreateRoomInput = z.infer<typeof createRoomSchema>;
+type StartRoomInput = z.infer<typeof startRoomWithFirstMessageSchema>;
+type UpdateRoomModelInput = z.infer<typeof updateRoomModelSchema>;
+type DeleteRoomInput = z.infer<typeof deleteRoomSchema>;
+
+export type ClientCreateRoomResult =
+  | { error: true; message: string }
+  | { error: false; roomId: string };
+
+export async function clientCreateRoom(data: CreateRoomInput): Promise<ClientCreateRoomResult> {
+  const res = await fetch("/api/rooms", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    cache: "no-store",
+  });
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    // ignore
+  }
+  const d = json as { error?: boolean; message?: string; roomId?: string };
+  if (res.ok && d.error === false && typeof d.roomId === "string") {
+    return { error: false, roomId: d.roomId };
+  }
+  return {
+    error: true,
+    message: typeof d.message === "string" ? d.message : `Request failed (${res.status})`,
+  };
+}
+
+export type ClientStartRoomWithFirstMessageResult =
+  | { error: false; roomId: string }
+  | { error: true; message: string; roomId?: string };
+
+export async function clientStartRoomWithFirstMessage(
+  data: StartRoomInput,
+): Promise<ClientStartRoomWithFirstMessageResult> {
+  const res = await fetch("/api/rooms/first-message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    cache: "no-store",
+  });
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    // ignore
+  }
+  const d = json as { error?: boolean; message?: string; roomId?: string };
+  if (res.ok && d.error === false && typeof d.roomId === "string") {
+    return { error: false, roomId: d.roomId };
+  }
+  return {
+    error: true,
+    message: typeof d.message === "string" ? d.message : `Request failed (${res.status})`,
+    ...(typeof d.roomId === "string" ? { roomId: d.roomId } : {}),
+  };
+}
+
+export async function clientDeleteRoom(
+  roomId: DeleteRoomInput["roomId"],
+): Promise<{ error: boolean; message?: string }> {
+  const res = await fetch(`/api/rooms/${roomId}`, { method: "DELETE", cache: "no-store" });
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    // ignore
+  }
+  const d = json as { error?: boolean; message?: string };
+  if (res.ok && d.error === false) return { error: false };
+  return {
+    error: true,
+    message:
+      typeof d.message === "string" ? d.message : `Request failed (${res.status})`,
+  };
+}
+
+export async function clientUpdateRoomModel(
+  data: UpdateRoomModelInput,
+): Promise<{ error: boolean; message?: string }> {
+  const res = await fetch(`/api/rooms/${data.roomId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelSlug: data.modelSlug }),
+    cache: "no-store",
+  });
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    // ignore
+  }
+  const d = json as { error?: boolean; message?: string };
+  if (res.ok && d.error === false) return { error: false };
+  return {
+    error: true,
+    message:
+      typeof d.message === "string" ? d.message : `Request failed (${res.status})`,
+  };
+}
 
 export async function clientGetJoinedRooms(): Promise<RoomListItem[]> {
   const data = await fetchApiOk<{ rooms: RoomListItem[] }>("/api/rooms/joined", {
