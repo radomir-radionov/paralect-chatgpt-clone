@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 import z from "zod";
 
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
@@ -47,6 +48,49 @@ function deriveRoomNameFromText(text: string): string {
   if (normalized.length <= maxLen) return normalized;
 
   return `${normalized.slice(0, maxLen).trimEnd()}…`;
+}
+
+/** `chat_room.owner_id` FK targets `user_profile`; rows are normally created by the auth trigger. */
+async function ensureUserProfileExists(
+  user: User,
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { data: existing } = await supabase
+    .from("user_profile")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (existing != null) return { ok: true };
+
+  const meta = user.user_metadata ?? {};
+  const name =
+    (typeof meta.name === "string" && meta.name.trim()) ||
+    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+    user.email?.trim() ||
+    "User";
+
+  const rawImage =
+    (typeof meta.avatar_url === "string" && meta.avatar_url.trim()) ||
+    (typeof meta.picture === "string" && meta.picture.trim()) ||
+    "";
+
+  const { error } = await supabase.from("user_profile").insert({
+    id: user.id,
+    name,
+    image_url: rawImage.length > 0 ? rawImage : "",
+  });
+
+  if (error?.code === "23505") return { ok: true };
+
+  if (error != null) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[ensureUserProfileExists]", error.code, error.message);
+    }
+    return { ok: false, message: "Failed to sync account profile" };
+  }
+
+  return { ok: true };
 }
 
 function normalizeFirstMessageAttachments(options: {
@@ -168,6 +212,11 @@ export async function createRoom(unsafeData: z.infer<typeof createRoomSchema>) {
 
   const supabase = createSupabaseAdminClient();
 
+  const profileReady = await ensureUserProfileExists(user, supabase);
+  if (!profileReady.ok) {
+    return { error: true, message: profileReady.message };
+  }
+
   const { data: room, error: roomError } = await supabase
     .from("chat_room")
     .insert({
@@ -180,6 +229,9 @@ export async function createRoom(unsafeData: z.infer<typeof createRoomSchema>) {
     .single();
 
   if (roomError || room == null) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[createRoom chat_room insert]", roomError?.code, roomError?.message);
+    }
     return { error: true, message: "Failed to create room" };
   }
 
@@ -205,6 +257,12 @@ export async function startRoomWithFirstMessage(
   }
 
   const supabase = createSupabaseAdminClient();
+
+  const profileReady = await ensureUserProfileExists(user, supabase);
+  if (!profileReady.ok) {
+    return { error: true, message: profileReady.message };
+  }
+
   let attachments: FirstMessageAttachment[];
   try {
     attachments = normalizeFirstMessageAttachments({
@@ -242,6 +300,13 @@ export async function startRoomWithFirstMessage(
     .single();
 
   if (roomError || room == null) {
+    if (process.env.NODE_ENV === "development") {
+      console.error(
+        "[startRoomWithFirstMessage chat_room insert]",
+        roomError?.code,
+        roomError?.message,
+      );
+    }
     return { error: true, message: "Failed to create room" };
   }
 

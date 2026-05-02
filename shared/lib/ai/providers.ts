@@ -18,7 +18,7 @@ function resolveLanguageModel(model: AiModelDefinition) {
         name: "groq",
         baseURL: "https://api.groq.com/openai/v1",
         apiKey: getProviderApiKey("groq"),
-      })(model.providerModelId);
+      }).chat(model.providerModelId);
     case "google":
       return createGoogleGenerativeAI({
         apiKey: getProviderApiKey("google"),
