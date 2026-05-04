@@ -3,6 +3,7 @@
 import EmailPasswordForm from "@domains/auth/components/EmailPasswordForm";
 import GoogleLoginForm from "@domains/auth/components/GoogleLoginForm";
 import { AuthPageShell } from "@domains/auth/components/AuthPageShell";
+import { Separator } from "@shared/components/ui/separator";
 
 export default function LoginPage() {
   return (
@@ -17,21 +18,15 @@ export default function LoginPage() {
       backLabel="Back"
       centerContent
     >
-      <div className="w-full space-y-6">
+      <div className="flex w-full flex-col gap-6">
         <EmailPasswordForm embedded />
 
-        <div className="relative py-2">
-          <div
-            className="absolute inset-0 flex items-center"
-            aria-hidden="true"
-          >
-            <span className="w-full border-t border-border" />
-          </div>
-          <div className="relative flex justify-center">
-            <span className="bg-background px-3 text-xs text-muted-foreground">
-              Or continue with Google
-            </span>
-          </div>
+        <div className="flex items-center gap-3 py-2">
+          <Separator className="flex-1" />
+          <span className="shrink-0 bg-background px-1 text-xs text-muted-foreground">
+            Or continue with Google
+          </span>
+          <Separator className="flex-1" />
         </div>
 
         <GoogleLoginForm embedded />

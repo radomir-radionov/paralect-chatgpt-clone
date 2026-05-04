@@ -7,6 +7,12 @@ import { toast } from "sonner";
 
 import { ActionButton } from "@shared/components/ui/action-button";
 import { Button } from "@shared/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@shared/components/ui/empty";
 import { AiKnotMark } from "@shared/assets/AiKnotMark";
 import { cn } from "@shared/lib/utils";
 
@@ -46,17 +52,16 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
         </Link>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
         {rooms.length === 0 ? (
-          <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-            No chats yet.{" "}
-            <Link
-              href="/"
-              className="underline underline-offset-2 hover:text-foreground transition-colors"
-            >
-              Start one
-            </Link>
-          </p>
+          <Empty className="min-h-0 flex-none gap-3 rounded-none border-0 bg-transparent p-4 py-8">
+            <EmptyHeader className="gap-1">
+              <EmptyTitle className="text-sm">No chats yet</EmptyTitle>
+              <EmptyDescription className="text-xs">
+                <Link href="/">Start one</Link>
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           rooms.map((room) => {
             return (
@@ -135,7 +140,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
           className="flex-1 justify-start gap-2 text-muted-foreground"
           asChild
         >
-          <Link href="/profile">
+          <Link href="/profile" className="flex items-center gap-2">
             <UserRoundIcon className="size-4" />
             Profile
           </Link>

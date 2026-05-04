@@ -19,7 +19,7 @@ export function AppAuthBar() {
         </Link>
         <nav className="flex items-center gap-2" aria-label="Account">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/profile">
+            <Link href="/profile" className="inline-flex items-center gap-2">
               <UserRoundIcon className="size-4" />
               Profile
             </Link>

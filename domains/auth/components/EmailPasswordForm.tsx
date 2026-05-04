@@ -94,9 +94,9 @@ export default function EmailPasswordForm({
 
   const card = (
       <Card>
-        <CardHeader className="space-y-4">
+        <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Credentials
               </p>
@@ -133,7 +133,7 @@ export default function EmailPasswordForm({
           </div>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor={emailId}>Email</FieldLabel>

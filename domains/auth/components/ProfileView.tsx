@@ -43,8 +43,8 @@ export function ProfileView() {
               Details from your Supabase session.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <dl className="space-y-4 text-sm">
+          <CardContent className="flex flex-col gap-6">
+            <dl className="flex flex-col gap-4 text-sm">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <dt className="text-muted-foreground">User ID</dt>
                 <dd className="font-mono text-xs">{user?.id ?? "—"}</dd>

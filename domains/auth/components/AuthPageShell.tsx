@@ -72,8 +72,8 @@ export function AuthPageShell({
             <Button
               variant={headerVariant === "minimal" ? "outline" : "ghost"}
               size="sm"
-              asChild
               className="shrink-0"
+              asChild
             >
               <Link href={backHref}>{backLabel}</Link>
             </Button>
