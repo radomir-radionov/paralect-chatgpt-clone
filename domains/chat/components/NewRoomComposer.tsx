@@ -11,6 +11,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@shared/components/ui/input-group";
+import { Skeleton } from "@shared/components/ui/skeleton";
 import {
   AI_MODELS,
   DEFAULT_AI_MODEL_SLUG,
@@ -41,7 +42,7 @@ type OptimisticBubble = {
 
 export function NewRoomComposer() {
   const router = useRouter();
-  const { user } = useCurrentUser();
+  const { user, isLoading: sessionLoading } = useCurrentUser();
   const mutation = useStartRoomWithFirstMessage(user?.id ?? null);
 
   const [message, setMessage] = useState("");
@@ -179,6 +180,26 @@ export function NewRoomComposer() {
     return !mutation.isPending && !isOverLimit && (hasText || hasImages || hasDocuments);
   }, [documents.length, images.length, isOverLimit, message, mutation.isPending]);
 
+  if (sessionLoading && user == null) {
+    return (
+      <div
+        className="flex h-full flex-col"
+        aria-busy="true"
+        role="status"
+      >
+        <span className="sr-only">Loading…</span>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-9 w-[min(220px,60vw)]" />
+        </div>
+        <div className="flex flex-1 flex-col justify-center gap-4 px-4 py-8">
+          <Skeleton className="h-8 w-[min(100%,20rem)]" />
+          <Skeleton className="h-32 w-full max-w-2xl" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       <ChatHeader
@@ -195,7 +216,7 @@ export function NewRoomComposer() {
                 "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
                 "focus-visible:ring-[3px]",
                 "disabled:opacity-50 disabled:cursor-not-allowed",
-                "w-[220px] max-w-[60vw]",
+                "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
               )}
               aria-label="AI model"
             >
@@ -245,9 +266,9 @@ export function NewRoomComposer() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 flex flex-col items-center justify-center">
-            <div className="w-full max-w-2xl -translate-y-20">
-              <p className="text-2xl font-semibold tracking-tight">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-1 sm:px-0">
+            <div className="w-full max-w-2xl sm:-translate-y-12 md:-translate-y-20">
+              <p className="text-xl font-semibold tracking-tight sm:text-2xl">
                 Ready when you are.
               </p>
 

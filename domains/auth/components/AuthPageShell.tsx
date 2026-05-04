@@ -35,7 +35,7 @@ export function AuthPageShell({
       ? "container mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4"
       : "container mx-auto flex min-h-14 max-w-5xl items-center justify-between gap-4 px-4 py-3";
 
-  const mainClassName = `container mx-auto w-full max-w-lg px-4 py-8 ${
+  const mainClassName = `container mx-auto w-full max-w-lg px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] ${
     centerContent
       ? showHeader
         ? "min-h-[calc(100vh-3.5rem)] flex items-center"
@@ -44,9 +44,9 @@ export function AuthPageShell({
   }`;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-dvh bg-background text-foreground">
       {showHeader ? (
-        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
+        <header className="sticky top-0 z-50 w-full border-b bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur supports-backdrop-filter:bg-background/60">
           <div className={headerContainerClassName}>
             {headerVariant === "full" ? (
               <div className="min-w-0">
@@ -55,7 +55,7 @@ export function AuthPageShell({
                     {eyebrow}
                   </p>
                 ) : null}
-                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+                <h1 className="truncate text-lg font-semibold leading-none tracking-tight text-foreground">
                   {title}
                 </h1>
                 {description ? (
@@ -64,14 +64,14 @@ export function AuthPageShell({
               </div>
             ) : (
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+                <h1 className="truncate text-lg font-semibold leading-none tracking-tight text-foreground">
                   <Link href="/">{minimalTitle}</Link>
                 </h1>
               </div>
             )}
             <Button
               variant={headerVariant === "minimal" ? "outline" : "ghost"}
-              size="sm"
+              size={headerVariant === "minimal" ? "lg" : "sm"}
               className="shrink-0"
               asChild
             >

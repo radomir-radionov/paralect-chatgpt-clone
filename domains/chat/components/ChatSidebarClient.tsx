@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { LogOutIcon, Trash2Icon, UserRoundIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,9 +15,11 @@ import {
   EmptyTitle,
 } from "@shared/components/ui/empty";
 import { AiKnotMark } from "@shared/assets/AiKnotMark";
+import { Skeleton } from "@shared/components/ui/skeleton";
 import { cn } from "@shared/lib/utils";
 
 import { SignOutButton } from "@domains/auth/components/SignOutButton";
+import { useRoomsNavOptional } from "@domains/chat/context/RoomsNavContext";
 import { useDeleteRoom } from "@domains/chat/mutations/useDeleteRoom";
 import type { RoomListItem } from "@domains/chat/queries/useRooms";
 import { useJoinedRooms } from "@domains/chat/queries/useRooms";
@@ -30,17 +33,26 @@ type Props = {
 
 export function ChatSidebarClient({ userId, initialRooms }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const params = useParams();
+  const roomsNav = useRoomsNavOptional();
+  const closeMobileSidebar = roomsNav?.closeMobileSidebar;
   const activeRoomId = typeof params?.id === "string" ? params.id : undefined;
+
+  useEffect(() => {
+    closeMobileSidebar?.();
+  }, [pathname, closeMobileSidebar]);
 
   const queryClient = useQueryClient();
   const roomsQuery = useJoinedRooms(userId);
   const rooms = roomsQuery.data ?? initialRooms;
+  const showRoomsPlaceholder =
+    roomsQuery.isPending && roomsQuery.data === undefined;
 
   const deleteRoomMutation = useDeleteRoom(userId);
 
   return (
-    <aside className="flex flex-col w-64 border-r bg-muted/30 h-full shrink-0">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <Link
           href="/"
@@ -52,8 +64,19 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
         </Link>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {rooms.length === 0 ? (
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+        {showRoomsPlaceholder ? (
+          <div
+            className="flex flex-col gap-1.5 p-1"
+            aria-busy="true"
+            role="status"
+          >
+            <span className="sr-only">Loading chats…</span>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full rounded-md" />
+            ))}
+          </div>
+        ) : rooms.length === 0 ? (
           <Empty className="min-h-0 flex-none gap-3 rounded-none border-0 bg-transparent p-4 py-8">
             <EmptyHeader className="gap-1">
               <EmptyTitle className="text-sm">No chats yet</EmptyTitle>
@@ -68,7 +91,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
               <div
                 key={room.id}
                 className={cn(
-                  "group relative px-3 py-2 rounded-md text-sm transition-colors",
+                  "group relative rounded-md px-3 py-2 text-sm transition-colors duration-200",
                   "hover:bg-accent hover:text-accent-foreground",
                   activeRoomId === room.id
                     ? "bg-accent text-accent-foreground font-medium"
@@ -91,7 +114,10 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
                   className={cn(
                     "absolute right-1.5 top-1/2 -translate-y-1/2",
                     "z-10",
-                    "opacity-0 group-hover:opacity-100 transition-opacity",
+                    "motion-safe:transition-opacity motion-safe:duration-200",
+                    "[@media(pointer:coarse)]:opacity-100",
+                    "[@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100",
+                    "focus-visible:opacity-100",
                     "text-destructive hover:text-destructive hover:bg-destructive/10",
                   )}
                   disabled={deleteRoomMutation.isPending}
@@ -154,7 +180,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
           <LogOutIcon className="size-4" />
         </SignOutButton>
       </div>
-    </aside>
+    </div>
   );
 }
 

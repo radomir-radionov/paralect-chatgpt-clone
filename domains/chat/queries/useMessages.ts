@@ -57,5 +57,6 @@ export function useMessages(roomId: string) {
     isFetchingNextPage: query.isFetchingNextPage,
     status: query.status,
     error: query.error,
+    refetch: query.refetch,
   };
 }

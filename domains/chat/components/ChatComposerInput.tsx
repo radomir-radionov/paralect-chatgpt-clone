@@ -107,7 +107,10 @@ export function ChatComposerInput({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="px-4 py-3 border-t shrink-0">
+    <form
+      onSubmit={handleSubmit}
+      className="shrink-0 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4"
+    >
       {previews.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {previews.map((p) => (

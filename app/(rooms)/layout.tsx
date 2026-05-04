@@ -7,6 +7,7 @@ import { getQueryClient } from "@shared/lib/query/getQueryClient";
 import { HydrateClient } from "@shared/lib/query/HydrateClient";
 
 import { chatKeys } from "@domains/chat/queries/keys";
+import { ChatLayoutShell } from "@domains/chat/components/ChatLayoutShell";
 import { ChatSidebar } from "@domains/chat/components/ChatSidebar";
 
 export default async function RoomsLayout({
@@ -17,8 +18,8 @@ export default async function RoomsLayout({
   const user = await getMe();
   if (user == null) {
     return (
-      <div className="flex h-screen overflow-hidden">
-        <main className="flex-1 min-w-0 overflow-hidden">{children}</main>
+      <div className="flex h-svh min-h-0 w-full overflow-hidden supports-[height:100dvh]:h-[100dvh]">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
       </div>
     );
   }
@@ -31,11 +32,14 @@ export default async function RoomsLayout({
   });
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <HydrateClient state={dehydrate(queryClient)}>
-        <ChatSidebar userId={user.id} />
-      </HydrateClient>
-      <main className="flex-1 min-w-0 overflow-hidden">{children}</main>
-    </div>
+    <ChatLayoutShell
+      sidebar={
+        <HydrateClient state={dehydrate(queryClient)}>
+          <ChatSidebar userId={user.id} />
+        </HydrateClient>
+      }
+    >
+      {children}
+    </ChatLayoutShell>
   );
 }

@@ -18,6 +18,7 @@ import {
   FieldLabel,
 } from "@shared/components/ui/field";
 import { Input } from "@shared/components/ui/input";
+import { LoadingSwap } from "@shared/components/ui/loading-swap";
 
 import { useSignInWithPassword } from "@domains/auth/mutations/useSignInWithPassword";
 import { useSignUp } from "@domains/auth/mutations/useSignUp";
@@ -172,7 +173,9 @@ export default function EmailPasswordForm({
               className="w-full"
               disabled={signIn.isPending || signUp.isPending}
             >
-              {mode === "signup" ? "Create account" : "Sign in"}
+              <LoadingSwap isLoading={signIn.isPending || signUp.isPending}>
+                {mode === "signup" ? "Create account" : "Sign in"}
+              </LoadingSwap>
             </Button>
             {status ? (
               <p

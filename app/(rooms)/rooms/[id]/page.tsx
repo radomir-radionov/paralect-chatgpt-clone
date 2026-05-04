@@ -57,7 +57,7 @@ export default async function RoomPage({
 
   return (
     <HydrateClient state={dehydrate(queryClient)}>
-      <RoomClient roomId={id} userId={user.id} />
+      <RoomClient key={id} roomId={id} userId={user.id} />
     </HydrateClient>
   );
 }
