@@ -31,7 +31,8 @@ export async function createSupabaseServerClient() {
 export function createSupabaseAdminClient() {
   const { supabaseUrl, supabaseSecretKey } = getSupabaseAdminEnv();
 
-  return createServerClient<Database>(supabaseUrl, supabaseSecretKey, {
+  return createServerClient<Database, "app_private">(supabaseUrl, supabaseSecretKey, {
+    db: { schema: "app_private" },
     cookies: {
       getAll() {
         return [];

@@ -8,6 +8,12 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: true, message }, { status });
 }
 
+/**
+ * POST body is validated in `startRoomWithFirstMessageMutation` (roomMutations.ts).
+ * Response `message` values (excluding this file’s "Invalid JSON body"):
+ * Invalid message data (+ Zod flatten in development), User not authenticated (401),
+ * Failed to sync account profile, attachment/storage errors, Failed to create/send/save…
+ */
 export async function POST(req: Request) {
   let body: unknown;
   try {

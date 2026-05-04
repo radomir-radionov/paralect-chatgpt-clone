@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:push": "npx supabase db push --linked --yes"
+    "db:push": "npx supabase db push --linked --yes",
+    "db:push:debug": "npx supabase db push --linked --yes --debug",
+    "db:types": "npx supabase gen types typescript --linked --schema=app_private > shared/lib/supabase/types/database.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.64",

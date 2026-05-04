@@ -249,11 +249,26 @@ export type StartRoomWithFirstMessageResult =
 export async function startRoomWithFirstMessageMutation(
   unsafeData: z.infer<typeof startRoomWithFirstMessageSchema>,
 ): Promise<StartRoomWithFirstMessageResult> {
-  const { success, data } = startRoomWithFirstMessageSchema.safeParse(unsafeData);
+  const parsed = startRoomWithFirstMessageSchema.safeParse(unsafeData);
 
-  if (!success) {
-    return { error: true, message: "Invalid message data" };
+  if (!parsed.success) {
+    if (process.env.NODE_ENV === "development") {
+      console.error(
+        "[startRoomWithFirstMessage validation]",
+        parsed.error.flatten(),
+      );
+    }
+    const base = "Invalid message data";
+    if (process.env.NODE_ENV !== "development") {
+      return { error: true, message: base };
+    }
+    const detail = JSON.stringify(parsed.error.flatten());
+    const maxLen = 900;
+    const suffix = detail.length > maxLen ? `${detail.slice(0, maxLen)}…` : detail;
+    return { error: true, message: `${base}: ${suffix}` };
   }
+
+  const { data } = parsed;
 
   const user = await getCurrentUser();
   if (user == null) {
