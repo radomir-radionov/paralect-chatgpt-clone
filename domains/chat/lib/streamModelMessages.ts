@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { ModelMessage } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 

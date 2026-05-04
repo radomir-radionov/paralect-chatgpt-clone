@@ -9,7 +9,7 @@ import {
   updateRoomModelSchema,
 } from "@domains/chat/schemas/rooms";
 
-import type { MessagesPage } from "./message-fetchers";
+import type { MessagesPage } from "./message-pagination";
 import type { RoomDetails, RoomListItem } from "./room-fetchers";
 
 type CreateRoomInput = z.infer<typeof createRoomSchema>;

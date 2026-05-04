@@ -1,7 +1,7 @@
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 
 import { chatKeys } from "@domains/chat/queries/keys";
-import type { MessagesPage } from "@domains/chat/queries/message-fetchers";
+import type { MessagesPage } from "@domains/chat/queries/message-pagination";
 import type {
   CachedMessage,
   MessageStatus,

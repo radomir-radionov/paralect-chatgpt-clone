@@ -7,7 +7,6 @@ import { clientGetProfile } from "./clientAuthFetchers";
 import type { UserProfile } from "./profile-fetcher";
 
 export type { UserProfile };
-export { fetchProfile } from "./profile-fetcher";
 
 export const profileQueryOptions = (userId: string) =>
   queryOptions({

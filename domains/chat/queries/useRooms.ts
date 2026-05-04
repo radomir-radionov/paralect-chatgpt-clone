@@ -9,8 +9,6 @@ import { clientGetJoinedRooms, clientGetRoom } from "./clientChatFetchers";
 
 export type { RoomDetails, RoomListItem } from "./room-fetchers";
 
-export { fetchJoinedRooms, fetchRoom } from "./room-fetchers";
-
 export const joinedRoomsQueryOptions = (userId: string) =>
   queryOptions({
     queryKey: chatKeys.joinedRooms(userId),
