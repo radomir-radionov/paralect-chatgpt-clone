@@ -9,7 +9,24 @@ Next.js (App Router) + TypeScript app with Supabase Auth and an AI chat experien
 - A Supabase project (URL + keys)
 - At least one AI provider key (OpenAI **or** Google Gemini **or** Groq), if you want to use the chat
 
-## Getting started (local dev)
+## Quickstart (local dev)
+
+If you already have a Supabase project, the fastest path is:
+
+```bash
+cd paralect
+npm install
+cp .env.example .env.local
+npm run db:push
+npm run db:types
+npm run dev
+```
+
+Then open `http://localhost:3000`.
+
+If `db:push` fails (VPN/Tailscale/IPv6 is a common culprit), jump to the troubleshooting section below and/or apply migrations via the Supabase Dashboard SQL Editor.
+
+## Getting started (step-by-step)
 
 ### 0) Supabase setup (required for a fully working app)
 
@@ -20,16 +37,23 @@ You need a Supabase project with:
   - Add `http://localhost:3000` to the allowed redirect / site URLs in Supabase Auth settings
 - **Database migrations** from `supabase/migrations/` applied in timestamp order (see below)
 
-**Database model:** Application tables live in the **`app_private` Postgres schema**. They are **not** exposed to PostgREST for the anon key: only `service_role` (server-side, via `SUPABASE_SECRET_KEY`) is granted access. Row Level Security (RLS) is **off** on these tables; authorization is enforced in Next.js API routes (`getCurrentUser()` + ownership checks on `owner_id` / `author_id`).
-
-**Storage:** Chat attachments use the private bucket **`chat-attachments`**. The app uses the service-role client for uploads and signed URLs — clients never talk to Storage with credentials that bypass your API.
-
 ### Apply database migrations
 
 Apply migrations to your Supabase project **in timestamp order**. Either:
 
 - **Supabase CLI (linked project):** from the `paralect` directory, `npm run db:push`, or  
 - **Dashboard:** SQL Editor — paste and run each file in order.
+
+#### Supabase CLI linking (required for `npm run db:push` / `npm run db:types`)
+
+The `db:*` scripts run the Supabase CLI via `npx` and expect the repo to be linked to your Supabase project:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+```
+
+After linking, `npm run db:push` and `npm run db:types` should work.
 
 Include every file under `supabase/migrations/`, at minimum:
 
@@ -45,6 +69,44 @@ After the database reflects `app_private`, regenerate TypeScript types (same sch
 ```bash
 npm run db:types
 ```
+
+### 1) Install dependencies
+
+```bash
+cd paralect
+npm install
+```
+
+### 2) Configure environment variables
+
+Create a local env file (do **not** commit it):
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in values in `.env.local`:
+
+- **Required (browser)**
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **Required (server/admin operations)**
+  - `SUPABASE_SECRET_KEY`
+- **Required for chat (pick at least one provider)**
+  - `OPENAI_API_KEY` (OpenAI models)
+  - `GOOGLE_GENERATIVE_AI_API_KEY` (Gemini models)
+  - `GROQ_API_KEY` (Groq models)
+- **Optional**
+  - `UNSTRUCTURED_API_URL` + `UNSTRUCTURED_API_KEY` (only if you use Unstructured-powered features)
+  - `NEXT_PUBLIC_CHAT_PACING` (set to `"0"` to disable streamed text pacing)
+
+### 3) Start the dev server
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000`.
 
 #### Troubleshooting `npm run db:push` (`tls error` / `socket is not connected`)
 
@@ -71,43 +133,11 @@ Do these once per environment after migrations are applied:
 4. **Authentication → Policies:** enable **Leaked password protection** (HaveIBeenPwned).
 5. **Settings → API → Exposed schemas:** include **`app_private`** alongside `public` (and `graphql_public` if present). PostgREST returns **`PGRST106 Invalid schema: app_private`** if this schema is missing, because the server-side admin client queries tables through the API with `Content-Profile` / `Accept-Profile` set to `app_private` (see [Using custom schemas](https://supabase.com/docs/guides/api/using-custom-schemas)). **Exposure does not grant anon users access to your data:** migrations revoke `USAGE` on `app_private` from `anon` and `authenticated` and only grant table privileges to `postgres` and `service_role`; the browser never uses the service role key.
 
-### 1) Install dependencies
+## How the backend is wired (important context)
 
-```bash
-cd paralect
-npm install
-```
+**Database model:** Application tables live in the **`app_private` Postgres schema**. They are **not** exposed to PostgREST for the anon key: only `service_role` (server-side, via `SUPABASE_SECRET_KEY`) is granted access. Row Level Security (RLS) is **off** on these tables; authorization is enforced in Next.js API routes (`getCurrentUser()` + ownership checks on `owner_id` / `author_id`).
 
-### 2) Configure environment variables
-
-Create a local env file (do **not** commit it):
-
-```bash
-cp .env.example .env.local
-```
-
-Fill in values in `.env.local`:
-
-- **Required**
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- **Required for server/admin operations**
-  - `SUPABASE_SECRET_KEY`
-- **Required (pick at least one)**
-  - `OPENAI_API_KEY` (OpenAI models)
-  - `GOOGLE_GENERATIVE_AI_API_KEY` (Gemini models)
-  - `GROQ_API_KEY` (Groq models)
-- **Optional**
-  - `UNSTRUCTURED_API_URL` + `UNSTRUCTURED_API_KEY` (only if you use Unstructured-powered features)
-  - `NEXT_PUBLIC_CHAT_PACING` (set to `"0"` to disable streamed text pacing)
-
-### 3) Start the dev server
-
-```bash
-npm run dev
-```
-
-Open `http://localhost:3000`.
+**Storage:** Chat attachments use the private bucket **`chat-attachments`**. The app uses the service-role client for uploads and signed URLs — clients never talk to Storage with credentials that bypass your API.
 
 ## Scripts
 

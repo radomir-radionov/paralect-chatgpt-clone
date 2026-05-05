@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  infiniteQueryOptions,
-  useInfiniteQuery,
-} from "@tanstack/react-query";
+import { infiniteQueryOptions, useInfiniteQuery } from "@tanstack/react-query";
 
 import type { CachedMessage } from "@domains/chat/types/chat.types";
 

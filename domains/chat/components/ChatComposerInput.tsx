@@ -1,6 +1,12 @@
 "use client";
 
-import { FileTextIcon, ImagePlusIcon, LoaderCircleIcon, SendIcon, XIcon } from "lucide-react";
+import {
+  FileTextIcon,
+  ImagePlusIcon,
+  LoaderCircleIcon,
+  SendIcon,
+  XIcon,
+} from "lucide-react";
 import { type FormEvent, useId, useMemo, useState } from "react";
 
 import {
@@ -13,7 +19,10 @@ import { cn } from "@shared/lib/utils";
 
 import { usePendingChatDocuments } from "@domains/chat/hooks/usePendingChatDocuments";
 import { usePendingChatImages } from "@domains/chat/hooks/usePendingChatImages";
-import { CHAT_DOCUMENT_ACCEPT, CHAT_DOCUMENTS_MAX_ATTACHMENTS } from "@domains/chat/lib/chatDocuments";
+import {
+  CHAT_DOCUMENT_ACCEPT,
+  CHAT_DOCUMENTS_MAX_ATTACHMENTS,
+} from "@domains/chat/lib/chatDocuments";
 import { CHAT_IMAGES_MAX_ATTACHMENTS } from "@domains/chat/lib/chatImages";
 
 const MAX_LENGTH = 2000;
@@ -98,8 +107,12 @@ export function ChatComposerInput({
     }
 
     setMessage("");
-    const pendingImages = hasImages ? (consumeImages() as ComposerPendingImage[]) : [];
-    const pendingDocuments = hasDocuments ? (consumeDocuments() as ComposerPendingDocument[]) : [];
+    const pendingImages = hasImages
+      ? (consumeImages() as ComposerPendingImage[])
+      : [];
+    const pendingDocuments = hasDocuments
+      ? (consumeDocuments() as ComposerPendingDocument[])
+      : [];
     const createdAt = new Date().toISOString();
 
     await onSubmit({
@@ -111,162 +124,165 @@ export function ChatComposerInput({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="shrink-0 border-t">
+    <form onSubmit={handleSubmit} className="shrink-0">
       <div
         className={cn(
-          "mx-auto w-full py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+          "w-full p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
           innerClassName,
         )}
       >
-      {previews.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {previews.map((p) => (
-            <div
-              key={p.id}
-              className="relative h-20 w-20 overflow-hidden rounded-md border border-border/60 bg-muted"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={p.url}
-                alt={p.name}
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-              <button
-                type="button"
-                className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-full bg-background/80 shadow-sm hover:bg-background"
-                onClick={() => removeImage(p.id)}
-                aria-label="Remove image"
-                title="Remove"
+        {previews.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {previews.map((p) => (
+              <div
+                key={p.id}
+                className="relative h-20 w-20 overflow-hidden rounded-md border border-border/60 bg-muted"
               >
-                <XIcon className="size-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      {documentPreviews.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {documentPreviews.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted px-2.5 py-2 text-sm"
-            >
-              <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{doc.name}</span>
-              <button
-                type="button"
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded-full hover:bg-background"
-                onClick={() => removeDocument(doc.id)}
-                aria-label="Remove document"
-                title="Remove"
-              >
-                <XIcon className="size-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <InputGroup data-disabled={disabled || undefined}>
-        <input
-          ref={fileInputRef}
-          id={fileInputId}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
-            if (files.length > 0) addImages(files);
-            e.currentTarget.value = "";
-          }}
-        />
-        <input
-          ref={documentInputRef}
-          id={documentInputId}
-          type="file"
-          accept={CHAT_DOCUMENT_ACCEPT}
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
-            if (files.length > 0) addDocuments(files);
-            e.currentTarget.value = "";
-          }}
-        />
-        <InputGroupTextarea
-          placeholder={placeholder}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          className="field-sizing-content min-h-auto max-h-40"
-          disabled={disabled}
-          aria-invalid={isOverLimit || undefined}
-          onPaste={onPaste}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void handleSubmit();
-            }
-          }}
-        />
-        <InputGroupAddon align="inline-start" className="self-end pb-1.5">
-          <div className="flex items-center gap-1">
-            <InputGroupButton
-              type="button"
-              aria-label="Attach image"
-              title="Attach image"
-              size="icon-sm"
-              disabled={disabled || images.length >= CHAT_IMAGES_MAX_ATTACHMENTS}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <ImagePlusIcon />
-            </InputGroupButton>
-            <InputGroupButton
-              type="button"
-              aria-label="Attach document"
-              title="Attach document"
-              size="icon-sm"
-              disabled={disabled || documents.length >= CHAT_DOCUMENTS_MAX_ATTACHMENTS}
-              onClick={() => documentInputRef.current?.click()}
-            >
-              <FileTextIcon />
-            </InputGroupButton>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.url}
+                  alt={p.name}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+                <button
+                  type="button"
+                  className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-full bg-background/80 shadow-sm hover:bg-background"
+                  onClick={() => removeImage(p.id)}
+                  aria-label="Remove image"
+                  title="Remove"
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              </div>
+            ))}
           </div>
-        </InputGroupAddon>
-        <InputGroupAddon align="inline-end" className="self-end pb-1.5">
-          {showCounter && (
-            <span
-              className={
-                isOverLimit
-                  ? "text-xs text-destructive font-medium"
-                  : "text-xs text-muted-foreground"
-              }
-            >
-              {remaining}
-            </span>
-          )}
-          <InputGroupButton
-            type="submit"
-            aria-label="Send"
-            title="Send (Enter)"
-            size="icon-sm"
-            disabled={!canSend}
-          >
-            {isSending ? (
-              <LoaderCircleIcon className="animate-spin" />
-            ) : (
-              <SendIcon />
-            )}
-          </InputGroupButton>
-        </InputGroupAddon>
-      </InputGroup>
+        )}
+        {documentPreviews.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {documentPreviews.map((doc) => (
+              <div
+                key={doc.id}
+                className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted px-2.5 py-2 text-sm"
+              >
+                <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">{doc.name}</span>
+                <button
+                  type="button"
+                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-full hover:bg-background"
+                  onClick={() => removeDocument(doc.id)}
+                  aria-label="Remove document"
+                  title="Remove"
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
-      <p className="mt-1.5 text-xs text-muted-foreground/60 hidden sm:block">
-        {footerText}
-      </p>
+        <InputGroup data-disabled={disabled || undefined}>
+          <input
+            ref={fileInputRef}
+            id={fileInputId}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) addImages(files);
+              e.currentTarget.value = "";
+            }}
+          />
+          <input
+            ref={documentInputRef}
+            id={documentInputId}
+            type="file"
+            accept={CHAT_DOCUMENT_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) addDocuments(files);
+              e.currentTarget.value = "";
+            }}
+          />
+          <InputGroupTextarea
+            placeholder={placeholder}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="field-sizing-content min-h-auto max-h-40"
+            disabled={disabled}
+            aria-invalid={isOverLimit || undefined}
+            onPaste={onPaste}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
+          />
+          <InputGroupAddon align="inline-start" className="self-end pb-1.5">
+            <div className="flex items-center gap-1">
+              <InputGroupButton
+                type="button"
+                aria-label="Attach image"
+                title="Attach image"
+                size="icon-sm"
+                disabled={
+                  disabled || images.length >= CHAT_IMAGES_MAX_ATTACHMENTS
+                }
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <ImagePlusIcon />
+              </InputGroupButton>
+              <InputGroupButton
+                type="button"
+                aria-label="Attach document"
+                title="Attach document"
+                size="icon-sm"
+                disabled={
+                  disabled || documents.length >= CHAT_DOCUMENTS_MAX_ATTACHMENTS
+                }
+                onClick={() => documentInputRef.current?.click()}
+              >
+                <FileTextIcon />
+              </InputGroupButton>
+            </div>
+          </InputGroupAddon>
+          <InputGroupAddon align="inline-end" className="self-end pb-1.5">
+            {showCounter && (
+              <span
+                className={
+                  isOverLimit
+                    ? "text-xs text-destructive font-medium"
+                    : "text-xs text-muted-foreground"
+                }
+              >
+                {remaining}
+              </span>
+            )}
+            <InputGroupButton
+              type="submit"
+              aria-label="Send"
+              title="Send (Enter)"
+              size="icon-sm"
+              disabled={!canSend}
+            >
+              {isSending ? (
+                <LoaderCircleIcon className="animate-spin" />
+              ) : (
+                <SendIcon />
+              )}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+
+        <p className="mt-1.5 text-xs text-muted-foreground/60 hidden sm:block">
+          {footerText}
+        </p>
       </div>
     </form>
   );
 }
-

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useOptimistic } from "react";
-import { LogOutIcon, Trash2Icon, XIcon } from "lucide-react";
+import { LogOutIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ActionButton } from "@shared/components/ui/action-button";
@@ -55,7 +55,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
         <Link
           href="/"
           className="inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-accent-foreground"
@@ -79,6 +79,22 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+        <Link
+          href="/"
+          aria-label="New chat"
+          title="New chat"
+          style={{ cursor: "pointer" }}
+          className={cn(
+            "block min-w-0 rounded-md px-3 py-2 text-sm transition-colors duration-200",
+            "cursor-pointer text-muted-foreground",
+            "hover:bg-accent hover:text-accent-foreground",
+            "inline-flex items-center gap-1.5",
+          )}
+        >
+          <PlusIcon className="size-4" />
+          New chat
+        </Link>
+
         {showRoomsPlaceholder ? (
           <div
             className="flex flex-col gap-1.5 p-1"
@@ -102,10 +118,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
         ) : (
           optimisticRooms.map((room) => {
             return (
-              <div
-                key={room.id}
-                className="group relative cursor-pointer"
-              >
+              <div key={room.id} className="group relative cursor-pointer">
                 <Link
                   href={`/rooms/${room.id}`}
                   className={cn(
@@ -193,4 +206,3 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
     </div>
   );
 }
-
