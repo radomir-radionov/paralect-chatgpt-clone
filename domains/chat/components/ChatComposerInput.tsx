@@ -9,6 +9,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@shared/components/ui/input-group";
+import { cn } from "@shared/lib/utils";
 
 import { usePendingChatDocuments } from "@domains/chat/hooks/usePendingChatDocuments";
 import { usePendingChatImages } from "@domains/chat/hooks/usePendingChatImages";
@@ -40,6 +41,8 @@ type Props = {
   isSending?: boolean;
   placeholder?: string;
   footerText?: string;
+  /** Constrain composer width; signed-in rooms and guest chat use `max-w-[800px]` so the bar aligns with the centered column. */
+  innerClassName?: string;
   onSubmit: (payload: ComposerSubmitPayload) => Promise<void> | void;
 };
 
@@ -48,6 +51,7 @@ export function ChatComposerInput({
   isSending = false,
   placeholder = "Ask anything…",
   footerText = "Enter to send · Shift+Enter for new line · Paste image or attach files",
+  innerClassName,
   onSubmit,
 }: Props) {
   const [message, setMessage] = useState("");
@@ -107,10 +111,13 @@ export function ChatComposerInput({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="shrink-0 border-t px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4"
-    >
+    <form onSubmit={handleSubmit} className="shrink-0 border-t">
+      <div
+        className={cn(
+          "mx-auto w-full py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+          innerClassName,
+        )}
+      >
       {previews.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {previews.map((p) => (
@@ -258,6 +265,7 @@ export function ChatComposerInput({
       <p className="mt-1.5 text-xs text-muted-foreground/60 hidden sm:block">
         {footerText}
       </p>
+      </div>
     </form>
   );
 }

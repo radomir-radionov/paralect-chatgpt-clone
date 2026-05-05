@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -32,14 +30,14 @@ export function AuthPageShell({
 }: AuthPageShellProps) {
   const headerContainerClassName =
     headerVariant === "minimal"
-      ? "container mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4"
-      : "container mx-auto flex min-h-14 max-w-5xl items-center justify-between gap-4 px-4 py-3";
+      ? "mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-3 sm:px-4"
+      : "mx-auto flex min-h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-3 py-3 sm:px-4";
 
-  const mainClassName = `container mx-auto w-full max-w-lg px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] ${
+  const mainClassName = `mx-auto w-full max-w-[600px] px-3 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-4 ${
     centerContent
       ? showHeader
-        ? "min-h-[calc(100vh-3.5rem)] flex items-center"
-        : "min-h-screen flex items-center"
+        ? "min-h-[calc(100dvh-3.5rem)] flex items-center"
+        : "min-h-dvh flex items-center"
       : ""
   }`;
 

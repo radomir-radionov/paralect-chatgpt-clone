@@ -6,6 +6,12 @@ import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@shared/components/ui/button";
 import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@shared/components/ui/empty";
+import {
   AI_MODELS,
   DEFAULT_AI_MODEL_SLUG,
   type AiModelSlug,
@@ -198,8 +204,8 @@ export function GuestChat() {
   return (
     <div className="flex h-full flex-col">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur supports-backdrop-filter:bg-background/60">
-        <div className="container mx-auto flex min-h-14 max-w-5xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:h-14 sm:flex-nowrap sm:gap-4 sm:px-4 sm:py-0">
-          <div className="min-w-0 flex-1 basis-[8rem] sm:flex-none">
+        <div className="flex w-full min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:h-14 sm:flex-nowrap sm:gap-4 sm:px-4 sm:py-0">
+          <div className="min-w-0 flex-1 basis-32 sm:flex-none">
             <h1 className="truncate text-lg font-semibold leading-none tracking-tight text-foreground">
               <Link href="/">AI Chat</Link>
             </h1>
@@ -247,15 +253,21 @@ export function GuestChat() {
 
       <div className="relative flex-1 min-h-0 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center px-3 sm:px-4">
-            <div className="w-full max-w-2xl -translate-y-8 sm:-translate-y-12 md:-translate-y-16">
-              <p className="text-xl font-semibold tracking-tight sm:text-2xl">
-                Ask your first question.
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free
-                questions. Sign in anytime to save your history.
-              </p>
+          <div className="flex h-full flex-col justify-end px-3 pb-2 pt-2 sm:justify-center sm:px-0 sm:pb-3">
+            <div className="flex w-full justify-center">
+              <div className="w-full max-w-[800px] sm:px-4">
+              <Empty className="border-0 bg-transparent py-10">
+                <EmptyHeader>
+                  <EmptyTitle className="text-xl font-semibold tracking-tight sm:text-2xl">
+                    Ask your first question.
+                  </EmptyTitle>
+                  <EmptyDescription className="mt-1">
+                    Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free
+                    questions. Sign in anytime to save your history.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+              </div>
             </div>
           </div>
         ) : (
@@ -284,7 +296,7 @@ export function GuestChat() {
 
       {hasReachedQuestionLimit && (
         <div className="border-t px-3 pt-3 sm:px-4">
-          <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+          <div className="mx-auto mb-3 max-w-[800px] rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
             <p className="font-medium">You have used your 3 free questions.</p>
             <p className="mt-1 text-muted-foreground">
               Sign in to keep chatting and save your conversation history.
@@ -306,6 +318,7 @@ export function GuestChat() {
       <ChatComposerInput
         disabled={isSending || hasReachedQuestionLimit}
         isSending={isSending}
+        innerClassName="max-w-[800px]"
         placeholder={
           hasReachedQuestionLimit ? "Sign in to ask more" : "Ask anything…"
         }

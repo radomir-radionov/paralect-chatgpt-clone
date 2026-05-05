@@ -17,6 +17,8 @@ import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
 import { getQueryClient } from "@shared/lib/query/getQueryClient";
 import { HydrateClient } from "@shared/lib/query/HydrateClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function RoomPage({
   params,
 }: {

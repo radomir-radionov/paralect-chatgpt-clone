@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { LogOutIcon, Trash2Icon, UserRoundIcon } from "lucide-react";
+import { useEffect, useOptimistic } from "react";
+import { LogOutIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ActionButton } from "@shared/components/ui/action-button";
@@ -23,8 +23,6 @@ import { useRoomsNavOptional } from "@domains/chat/context/RoomsNavContext";
 import { useDeleteRoom } from "@domains/chat/mutations/useDeleteRoom";
 import type { RoomListItem } from "@domains/chat/queries/useRooms";
 import { useJoinedRooms } from "@domains/chat/queries/useRooms";
-import { chatKeys } from "@domains/chat/queries/keys";
-import { useQueryClient } from "@tanstack/react-query";
 
 type Props = {
   userId: string;
@@ -43,9 +41,13 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
     closeMobileSidebar?.();
   }, [pathname, closeMobileSidebar]);
 
-  const queryClient = useQueryClient();
   const roomsQuery = useJoinedRooms(userId);
-  const rooms = roomsQuery.data ?? initialRooms;
+  const baseRooms = roomsQuery.data ?? initialRooms;
+  const [optimisticRooms, applyOptimisticDelete] = useOptimistic(
+    baseRooms,
+    (current: RoomListItem[], roomId: string) =>
+      current.filter((r) => r.id !== roomId),
+  );
   const showRoomsPlaceholder =
     roomsQuery.isPending && roomsQuery.data === undefined;
 
@@ -53,15 +55,27 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
         <Link
           href="/"
-          className="inline-flex items-center justify-center size-8 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-accent-foreground"
           aria-label="AI Chat"
           title="AI Chat"
         >
           <AiKnotMark className="size-6" />
         </Link>
+        {roomsNav != null ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 md:hidden"
+            onClick={roomsNav.closeMobileSidebar}
+            aria-label="Close sidebar"
+          >
+            <XIcon className="size-4" />
+          </Button>
+        ) : null}
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
@@ -76,7 +90,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
               <Skeleton key={i} className="h-9 w-full rounded-md" />
             ))}
           </div>
-        ) : rooms.length === 0 ? (
+        ) : optimisticRooms.length === 0 ? (
           <Empty className="min-h-0 flex-none gap-3 rounded-none border-0 bg-transparent p-4 py-8">
             <EmptyHeader className="gap-1">
               <EmptyTitle className="text-sm">No chats yet</EmptyTitle>
@@ -86,21 +100,22 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
             </EmptyHeader>
           </Empty>
         ) : (
-          rooms.map((room) => {
+          optimisticRooms.map((room) => {
             return (
               <div
                 key={room.id}
-                className={cn(
-                  "group relative rounded-md px-3 py-2 text-sm transition-colors duration-200",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  activeRoomId === room.id
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground",
-                )}
+                className="group relative cursor-pointer"
               >
                 <Link
                   href={`/rooms/${room.id}`}
-                  className="block min-w-0 pr-8"
+                  className={cn(
+                    "block min-w-0 rounded-md px-3 py-2 pr-8 text-sm transition-colors duration-200",
+                    "cursor-pointer",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    activeRoomId === room.id
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground",
+                  )}
                 >
                   <span className="block truncate">{room.name}</span>
                 </Link>
@@ -115,40 +130,46 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
                     "absolute right-1.5 top-1/2 -translate-y-1/2",
                     "z-10",
                     "motion-safe:transition-opacity motion-safe:duration-200",
-                    "[@media(pointer:coarse)]:opacity-100",
-                    "[@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100",
+                    "pointer-coarse:opacity-100",
+                    "pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100",
                     "focus-visible:opacity-100",
                     "text-destructive hover:text-destructive hover:bg-destructive/10",
                   )}
-                  disabled={deleteRoomMutation.isPending}
+                  disabled={
+                    deleteRoomMutation.isPending &&
+                    deleteRoomMutation.variables?.roomId === room.id
+                  }
                   action={async () => {
-                    const result = await deleteRoomMutation.mutateAsync({
-                      roomId: room.id,
-                    });
-                    if (result.error) return result;
+                    if (
+                      deleteRoomMutation.isPending &&
+                      deleteRoomMutation.variables?.roomId !== room.id
+                    ) {
+                      return {
+                        error: true,
+                        message: "Another chat is being deleted.",
+                      };
+                    }
+
+                    applyOptimisticDelete(room.id);
 
                     if (activeRoomId === room.id) {
                       router.replace("/");
                     }
 
-                    await queryClient.cancelQueries({
-                      queryKey: chatKeys.room(room.id),
-                    });
-                    await queryClient.cancelQueries({
-                      queryKey: chatKeys.messages(room.id),
-                    });
-                    queryClient.removeQueries({ queryKey: chatKeys.room(room.id) });
-                    queryClient.removeQueries({
-                      queryKey: chatKeys.messages(room.id),
-                    });
+                    try {
+                      const result = await deleteRoomMutation.mutateAsync({
+                        roomId: room.id,
+                      });
+                      if (result.error) return result;
 
-                    toast.success("Chat deleted");
-                    queryClient.setQueryData(
-                      chatKeys.joinedRooms(userId),
-                      (prev: RoomListItem[] | undefined) =>
-                        Array.isArray(prev) ? prev.filter((r) => r.id !== room.id) : prev,
-                    );
-                    return { error: false };
+                      toast.success("Chat deleted");
+                      return { error: false };
+                    } catch {
+                      return {
+                        error: true,
+                        message: "Could not delete chat.",
+                      };
+                    }
                   }}
                 >
                   <Trash2Icon className="size-4" />
@@ -159,18 +180,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
         )}
       </nav>
 
-      <div className="border-t p-2 flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="flex-1 justify-start gap-2 text-muted-foreground"
-          asChild
-        >
-          <Link href="/profile" className="flex items-center gap-2">
-            <UserRoundIcon className="size-4" />
-            Profile
-          </Link>
-        </Button>
+      <div className="border-t p-2 flex items-center justify-end">
         <SignOutButton
           variant="ghost"
           size="icon-sm"

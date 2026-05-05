@@ -74,6 +74,11 @@ export function NewRoomComposer() {
       return;
     }
 
+    if ((hasImages || hasDocuments) && !user?.id) {
+      toast.error("You must be signed in to upload files");
+      return;
+    }
+
     setMessage("");
     const pendingImages = hasImages ? images.slice() : [];
     const pendingDocuments = hasDocuments ? documents.slice() : [];
@@ -97,11 +102,6 @@ export function NewRoomComposer() {
       | undefined;
 
     if (hasImages || hasDocuments) {
-      if (!user?.id) {
-        toast.error("You must be signed in to upload files");
-        return;
-      }
-
       const uploaded: NonNullable<typeof attachments> = [];
 
       for (const img of pendingImages) {
@@ -192,9 +192,9 @@ export function NewRoomComposer() {
           <Skeleton className="h-6 w-32" />
           <Skeleton className="h-9 w-[min(220px,60vw)]" />
         </div>
-        <div className="flex flex-1 flex-col justify-center gap-4 px-4 py-8">
+        <div className="flex flex-1 flex-col justify-end gap-4 px-4 py-8 sm:justify-center">
           <Skeleton className="h-8 w-[min(100%,20rem)]" />
-          <Skeleton className="h-32 w-full max-w-2xl" />
+          <Skeleton className="h-32 w-full" />
         </div>
       </div>
     );
@@ -204,29 +204,24 @@ export function NewRoomComposer() {
     <div className="h-full flex flex-col">
       <ChatHeader
         right={
-          <>
-            <label className="text-xs text-muted-foreground hidden sm:block">
-              Model
-            </label>
-            <select
-              value={modelSlug}
-              onChange={(e) => setModelSlug(e.target.value as AiModelSlug)}
-              disabled={mutation.isPending}
-              className={cn(
-                "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
-                "focus-visible:ring-[3px]",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
-                "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
-              )}
-              aria-label="AI model"
-            >
-              {AI_MODELS.map((model) => (
-                <option key={model.slug} value={model.slug}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
-          </>
+          <select
+            value={modelSlug}
+            onChange={(e) => setModelSlug(e.target.value as AiModelSlug)}
+            disabled={mutation.isPending}
+            className={cn(
+              "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
+              "focus-visible:ring-[3px]",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
+            )}
+            aria-label="AI model"
+          >
+            {AI_MODELS.map((model) => (
+              <option key={model.slug} value={model.slug}>
+                {model.label}
+              </option>
+            ))}
+          </select>
         }
       />
 
@@ -266,13 +261,9 @@ export function NewRoomComposer() {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-1 sm:px-0">
-            <div className="w-full max-w-2xl sm:-translate-y-12 md:-translate-y-20">
-              <p className="text-xl font-semibold tracking-tight sm:text-2xl">
-                Ready when you are.
-              </p>
-
-              <form onSubmit={handleSubmit} className="mt-5">
+          <div className="flex min-h-0 flex-1 flex-col justify-end pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:justify-center sm:pb-6">
+            <div className="mx-auto w-full min-w-0 max-w-[800px] px-3 sm:px-4">
+              <form onSubmit={handleSubmit}>
                 <InputGroup data-disabled={mutation.isPending || undefined}>
                   <input
                     ref={fileInputRef}

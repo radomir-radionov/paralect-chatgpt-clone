@@ -11,6 +11,8 @@ import {
 
 import { AuthPageShell } from "@domains/auth/components/AuthPageShell";
 
+export const dynamic = "force-static";
+
 export default function WelcomePage() {
   return (
     <AuthPageShell

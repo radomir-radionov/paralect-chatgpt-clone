@@ -211,45 +211,40 @@ export function RoomClient({
     <div className="flex h-full flex-col">
       <ChatHeader
         right={
-          <>
-            <label className="hidden text-xs text-muted-foreground sm:block">
-              Model
-            </label>
-            <select
-              value={modelSlug || room.modelSlug}
-              onChange={async (e) => {
-                const next = e.target.value;
-                setModelSlug(next);
+          <select
+            value={modelSlug || room.modelSlug}
+            onChange={async (e) => {
+              const next = e.target.value;
+              setModelSlug(next);
 
-                const result = await updateRoomModelMutation.mutateAsync({
-                  roomId,
-                  modelSlug: next as (typeof AI_MODELS)[number]["slug"],
-                });
+              const result = await updateRoomModelMutation.mutateAsync({
+                roomId,
+                modelSlug: next as (typeof AI_MODELS)[number]["slug"],
+              });
 
-                if (result.error) {
-                  toast.error(result.message ?? "Failed to update model");
-                  setModelSlug(room.modelSlug);
-                  return;
-                }
+              if (result.error) {
+                toast.error(result.message ?? "Failed to update model");
+                setModelSlug(room.modelSlug);
+                return;
+              }
 
-                toast.success("Model updated");
-              }}
-              disabled={updateRoomModelMutation.isPending}
-              className={cn(
-                "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] duration-200",
-                "focus-visible:ring-[3px]",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-                "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
-              )}
-              aria-label="AI model"
-            >
-              {AI_MODELS.map((model) => (
-                <option key={model.slug} value={model.slug}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
-          </>
+              toast.success("Model updated");
+            }}
+            disabled={updateRoomModelMutation.isPending}
+            className={cn(
+              "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] duration-200",
+              "focus-visible:ring-[3px]",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
+            )}
+            aria-label="AI model"
+          >
+            {AI_MODELS.map((model) => (
+              <option key={model.slug} value={model.slug}>
+                {model.label}
+              </option>
+            ))}
+          </select>
         }
       />
 
@@ -292,7 +287,7 @@ export function RoomClient({
             {messagesInitialLoading ? <MessagesLoadingSkeleton /> : null}
 
             {showMessagesEmpty ? (
-              <Empty className="min-h-[12rem] border-0 bg-transparent py-8">
+              <Empty className="min-h-48 border-0 bg-transparent py-8">
                 <EmptyHeader>
                   <EmptyTitle>No messages yet</EmptyTitle>
                   <EmptyDescription>
