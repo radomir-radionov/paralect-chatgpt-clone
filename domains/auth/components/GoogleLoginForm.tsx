@@ -34,7 +34,7 @@ export default function GoogleLoginForm({
       type="button"
       aria-label="Continue with Google"
       title="Continue with Google"
-      className="w-full bg-[#1a73e8] text-white hover:bg-[#1662c4] dark:bg-[#1a73e8] dark:hover:bg-[#1662c4]"
+      className="w-full bg-oauth-google text-oauth-google-foreground hover:bg-oauth-google-hover"
       onClick={handleGoogleLogin}
       disabled={signInWithGoogle.isPending}
     >
@@ -58,7 +58,7 @@ export default function GoogleLoginForm({
           redirected to Google and then returned to the app home.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">{googleButton}</CardContent>
+      <CardContent className="flex flex-col gap-4">{googleButton}</CardContent>
     </Card>
   );
 

@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import type { Ref } from "react";
 import { FileTextIcon, ImageOffIcon } from "lucide-react";
@@ -182,7 +182,7 @@ export function ChatMessage({
         )}
         <div
           className={cn(
-            "max-w-[70%] rounded-2xl rounded-tr-sm px-3.5 py-2 text-sm",
+            "max-w-[min(36rem,88%)] sm:max-w-[70%] rounded-2xl rounded-tr-sm px-3.5 py-2 text-sm",
             "bg-primary text-primary-foreground",
             isPending && "opacity-60",
             isError && "bg-destructive text-white",
@@ -213,7 +213,7 @@ export function ChatMessage({
       )}
       <div
         className={cn(
-          "max-w-[70%] rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm",
+          "max-w-[min(36rem,88%)] sm:max-w-[70%] rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm",
           "bg-accent text-accent-foreground",
           isPending && "opacity-60",
           isError && "bg-destructive/10 text-destructive",

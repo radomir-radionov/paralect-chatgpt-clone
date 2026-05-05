@@ -53,14 +53,14 @@ function invalidateChatRooms(queryClient: QueryClient) {
   });
 }
 
-function invalidateChatMessagesForRoom(queryClient: QueryClient, roomId: string) {
-  queryClient.invalidateQueries({
+function removeChatMessagesForRoom(queryClient: QueryClient, roomId: string) {
+  queryClient.removeQueries({
     queryKey: ["chat", "messages", roomId],
   });
 }
 
-function invalidateChatRoom(queryClient: QueryClient, roomId: string) {
-  queryClient.invalidateQueries({
+function removeChatRoom(queryClient: QueryClient, roomId: string) {
+  queryClient.removeQueries({
     queryKey: ["chat", "room", roomId],
   });
 }
@@ -90,8 +90,8 @@ export function registerChatCrossTabSync(queryClient: QueryClient): () => void {
     if (msg.type === "chat.invalidate") {
       if (typeof msg.roomId === "string" && msg.roomId.length > 0) {
         invalidateChatRooms(queryClient);
-        invalidateChatRoom(queryClient, msg.roomId);
-        invalidateChatMessagesForRoom(queryClient, msg.roomId);
+        removeChatRoom(queryClient, msg.roomId);
+        removeChatMessagesForRoom(queryClient, msg.roomId);
       } else {
         invalidateAllChat(queryClient);
       }

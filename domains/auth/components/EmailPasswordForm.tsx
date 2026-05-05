@@ -18,6 +18,7 @@ import {
   FieldLabel,
 } from "@shared/components/ui/field";
 import { Input } from "@shared/components/ui/input";
+import { LoadingSwap } from "@shared/components/ui/loading-swap";
 
 import { useSignInWithPassword } from "@domains/auth/mutations/useSignInWithPassword";
 import { useSignUp } from "@domains/auth/mutations/useSignUp";
@@ -94,9 +95,9 @@ export default function EmailPasswordForm({
 
   const card = (
       <Card>
-        <CardHeader className="space-y-4">
+        <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Credentials
               </p>
@@ -133,7 +134,7 @@ export default function EmailPasswordForm({
           </div>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor={emailId}>Email</FieldLabel>
@@ -172,7 +173,9 @@ export default function EmailPasswordForm({
               className="w-full"
               disabled={signIn.isPending || signUp.isPending}
             >
-              {mode === "signup" ? "Create account" : "Sign in"}
+              <LoadingSwap isLoading={signIn.isPending || signUp.isPending}>
+                {mode === "signup" ? "Create account" : "Sign in"}
+              </LoadingSwap>
             </Button>
             {status ? (
               <p

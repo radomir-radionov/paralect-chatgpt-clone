@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { buttonVariants } from "@shared/components/ui/button";
+import { Button, buttonVariants } from "@shared/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@shared/components/ui/empty";
 import {
   AI_MODELS,
   DEFAULT_AI_MODEL_SLUG,
@@ -197,26 +203,33 @@ export function GuestChat() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-        <div className="container mx-auto flex h-14 max-w-5xl items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur supports-backdrop-filter:bg-background/60">
+        <div className="flex w-full min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:h-14 sm:flex-nowrap sm:gap-4 sm:px-4 sm:py-0">
+          <div className="min-w-0 flex-1 basis-32 sm:flex-none">
+            <h1 className="truncate text-lg font-semibold leading-none tracking-tight text-foreground">
               <Link href="/">AI Chat</Link>
             </h1>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <label className="hidden text-xs text-muted-foreground sm:block">
-              Model
-            </label>
+          <div className="flex shrink-0 items-center">
+            <Button
+              variant="outline"
+              size="lg"
+              className="shrink-0 sm:hidden"
+              asChild
+            >
+              <Link href="/login">Sign in</Link>
+            </Button>
+          </div>
+          <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
             <select
               value={modelSlug}
               onChange={(e) => setModelSlug(e.target.value as AiModelSlug)}
               disabled={isSending}
               className={cn(
-                "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
+                "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 min-w-0 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
                 "focus-visible:ring-[3px]",
                 "disabled:cursor-not-allowed disabled:opacity-50",
-                "w-[220px] max-w-[52vw]",
+                "min-w-[160px] w-full flex-1 max-w-none sm:w-[220px] sm:max-w-none sm:flex-none",
               )}
               aria-label="AI model"
             >
@@ -226,27 +239,35 @@ export function GuestChat() {
                 </option>
               ))}
             </select>
-            <Link
-              href="/login"
-              className={buttonVariants({ variant: "outline", size: "sm" })}
+            <Button
+              variant="outline"
+              size="lg"
+              className="hidden shrink-0 sm:inline-flex"
+              asChild
             >
-              Sign in
-            </Link>
+              <Link href="/login">Sign in</Link>
+            </Button>
           </div>
         </div>
       </header>
 
       <div className="relative flex-1 min-h-0 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center px-4">
-            <div className="w-full max-w-2xl -translate-y-16">
-              <p className="text-2xl font-semibold tracking-tight">
-                Ask your first question.
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free
-                questions. Sign in anytime to save your history.
-              </p>
+          <div className="flex h-full flex-col justify-end px-3 pb-2 pt-2 sm:justify-center sm:px-0 sm:pb-3">
+            <div className="flex w-full justify-center">
+              <div className="w-full max-w-[800px] sm:px-4">
+              <Empty className="border-0 bg-transparent py-10">
+                <EmptyHeader>
+                  <EmptyTitle className="text-xl font-semibold tracking-tight sm:text-2xl">
+                    Ask your first question.
+                  </EmptyTitle>
+                  <EmptyDescription className="mt-1">
+                    Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free
+                    questions. Sign in anytime to save your history.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+              </div>
             </div>
           </div>
         ) : (
@@ -274,15 +295,19 @@ export function GuestChat() {
       </div>
 
       {hasReachedQuestionLimit && (
-        <div className="border-t px-4 pt-3">
-          <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+        <div className="border-t px-3 pt-3 sm:px-4">
+          <div className="mx-auto mb-3 max-w-[800px] rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
             <p className="font-medium">You have used your 3 free questions.</p>
             <p className="mt-1 text-muted-foreground">
               Sign in to keep chatting and save your conversation history.
             </p>
             <Link
               href="/login"
-              className={buttonVariants({ size: "sm", className: "mt-3" })}
+              className={buttonVariants({
+                variant: "outline",
+                size: "sm",
+                className: "mt-3",
+              })}
             >
               Sign in or create account
             </Link>
@@ -293,6 +318,7 @@ export function GuestChat() {
       <ChatComposerInput
         disabled={isSending || hasReachedQuestionLimit}
         isSending={isSending}
+        innerClassName="max-w-[800px]"
         placeholder={
           hasReachedQuestionLimit ? "Sign in to ask more" : "Ask anything…"
         }

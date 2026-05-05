@@ -10,24 +10,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@shared/components/ui/card";
-import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
 
 export const metadata: Metadata = {
   title: "Page not found",
 };
 
 export default async function NotFound() {
-  const origin = await getRequestOrigin();
-  const res = await fetch(new URL("/api/profile/me", origin), {
-    method: "GET",
-    cache: "no-store",
-  });
-  const href = res.status === 401 ? "/login" : "/";
-
   return (
-    <div className="min-h-screen bg-background px-4 py-12 text-foreground">
-      <div className="mx-auto flex min-h-[calc(100vh-6rem)] max-w-lg items-center justify-center">
-        <Card className="w-full text-center">
+    <div className="min-h-dvh bg-background px-4 py-12 text-foreground">
+      <div className="mx-auto flex min-h-[calc(100dvh-6rem)] max-w-lg items-center justify-center">
+        <Card className="w-full">
           <CardHeader>
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
               404
@@ -39,12 +31,15 @@ export default async function NotFound() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Use the button below to return to a valid entry point.
+              Choose one of the options below to get back on track.
             </p>
           </CardContent>
-          <CardFooter className="justify-center">
+          <CardFooter className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link href={href}>Go back</Link>
+              <Link href="/">Go home</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/login">Sign in</Link>
             </Button>
           </CardFooter>
         </Card>

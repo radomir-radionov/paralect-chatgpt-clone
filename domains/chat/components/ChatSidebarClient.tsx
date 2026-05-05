@@ -1,21 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { LogOutIcon, Trash2Icon, UserRoundIcon } from "lucide-react";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { useEffect, useOptimistic } from "react";
+import { LogOutIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ActionButton } from "@shared/components/ui/action-button";
 import { Button } from "@shared/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@shared/components/ui/empty";
 import { AiKnotMark } from "@shared/assets/AiKnotMark";
+import { Skeleton } from "@shared/components/ui/skeleton";
 import { cn } from "@shared/lib/utils";
 
 import { SignOutButton } from "@domains/auth/components/SignOutButton";
+import { useRoomsNavOptional } from "@domains/chat/context/RoomsNavContext";
 import { useDeleteRoom } from "@domains/chat/mutations/useDeleteRoom";
 import type { RoomListItem } from "@domains/chat/queries/useRooms";
 import { useJoinedRooms } from "@domains/chat/queries/useRooms";
-import { chatKeys } from "@domains/chat/queries/keys";
-import { useQueryClient } from "@tanstack/react-query";
 
 type Props = {
   userId: string;
@@ -24,55 +31,91 @@ type Props = {
 
 export function ChatSidebarClient({ userId, initialRooms }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const params = useParams();
+  const roomsNav = useRoomsNavOptional();
+  const closeMobileSidebar = roomsNav?.closeMobileSidebar;
   const activeRoomId = typeof params?.id === "string" ? params.id : undefined;
 
-  const queryClient = useQueryClient();
+  useEffect(() => {
+    closeMobileSidebar?.();
+  }, [pathname, closeMobileSidebar]);
+
   const roomsQuery = useJoinedRooms(userId);
-  const rooms = roomsQuery.data ?? initialRooms;
+  const baseRooms = roomsQuery.data ?? initialRooms;
+  const [optimisticRooms, applyOptimisticDelete] = useOptimistic(
+    baseRooms,
+    (current: RoomListItem[], roomId: string) =>
+      current.filter((r) => r.id !== roomId),
+  );
+  const showRoomsPlaceholder =
+    roomsQuery.isPending && roomsQuery.data === undefined;
 
   const deleteRoomMutation = useDeleteRoom(userId);
 
   return (
-    <aside className="flex flex-col w-64 border-r bg-muted/30 h-full shrink-0">
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
         <Link
           href="/"
-          className="inline-flex items-center justify-center size-8 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-accent-foreground"
           aria-label="AI Chat"
           title="AI Chat"
         >
           <AiKnotMark className="size-6" />
         </Link>
+        {roomsNav != null ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 md:hidden"
+            onClick={roomsNav.closeMobileSidebar}
+            aria-label="Close sidebar"
+          >
+            <XIcon className="size-4" />
+          </Button>
+        ) : null}
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {rooms.length === 0 ? (
-          <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-            No chats yet.{" "}
-            <Link
-              href="/"
-              className="underline underline-offset-2 hover:text-foreground transition-colors"
-            >
-              Start one
-            </Link>
-          </p>
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+        {showRoomsPlaceholder ? (
+          <div
+            className="flex flex-col gap-1.5 p-1"
+            aria-busy="true"
+            role="status"
+          >
+            <span className="sr-only">Loading chats…</span>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full rounded-md" />
+            ))}
+          </div>
+        ) : optimisticRooms.length === 0 ? (
+          <Empty className="min-h-0 flex-none gap-3 rounded-none border-0 bg-transparent p-4 py-8">
+            <EmptyHeader className="gap-1">
+              <EmptyTitle className="text-sm">No chats yet</EmptyTitle>
+              <EmptyDescription className="text-xs">
+                <Link href="/">Start one</Link>
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
-          rooms.map((room) => {
+          optimisticRooms.map((room) => {
             return (
               <div
                 key={room.id}
-                className={cn(
-                  "group relative px-3 py-2 rounded-md text-sm transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  activeRoomId === room.id
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground",
-                )}
+                className="group relative cursor-pointer"
               >
                 <Link
                   href={`/rooms/${room.id}`}
-                  className="block min-w-0 pr-8"
+                  className={cn(
+                    "block min-w-0 rounded-md px-3 py-2 pr-8 text-sm transition-colors duration-200",
+                    "cursor-pointer",
+                    "hover:bg-accent hover:text-accent-foreground",
+                    activeRoomId === room.id
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground",
+                  )}
                 >
                   <span className="block truncate">{room.name}</span>
                 </Link>
@@ -86,26 +129,47 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
                   className={cn(
                     "absolute right-1.5 top-1/2 -translate-y-1/2",
                     "z-10",
-                    "opacity-0 group-hover:opacity-100 transition-opacity",
+                    "motion-safe:transition-opacity motion-safe:duration-200",
+                    "pointer-coarse:opacity-100",
+                    "pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100",
+                    "focus-visible:opacity-100",
                     "text-destructive hover:text-destructive hover:bg-destructive/10",
                   )}
-                  disabled={deleteRoomMutation.isPending}
+                  disabled={
+                    deleteRoomMutation.isPending &&
+                    deleteRoomMutation.variables?.roomId === room.id
+                  }
                   action={async () => {
-                    const result = await deleteRoomMutation.mutateAsync({
-                      roomId: room.id,
-                    });
-                    if (result.error) return result;
-
-                    toast.success("Chat deleted");
-                    queryClient.setQueryData(
-                      chatKeys.joinedRooms(userId),
-                      (prev: RoomListItem[] | undefined) =>
-                        Array.isArray(prev) ? prev.filter((r) => r.id !== room.id) : prev,
-                    );
-                    if (activeRoomId === room.id) {
-                      router.push("/");
+                    if (
+                      deleteRoomMutation.isPending &&
+                      deleteRoomMutation.variables?.roomId !== room.id
+                    ) {
+                      return {
+                        error: true,
+                        message: "Another chat is being deleted.",
+                      };
                     }
-                    return { error: false };
+
+                    applyOptimisticDelete(room.id);
+
+                    if (activeRoomId === room.id) {
+                      router.replace("/");
+                    }
+
+                    try {
+                      const result = await deleteRoomMutation.mutateAsync({
+                        roomId: room.id,
+                      });
+                      if (result.error) return result;
+
+                      toast.success("Chat deleted");
+                      return { error: false };
+                    } catch {
+                      return {
+                        error: true,
+                        message: "Could not delete chat.",
+                      };
+                    }
                   }}
                 >
                   <Trash2Icon className="size-4" />
@@ -116,18 +180,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
         )}
       </nav>
 
-      <div className="border-t p-2 flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="flex-1 justify-start gap-2 text-muted-foreground"
-          asChild
-        >
-          <Link href="/profile">
-            <UserRoundIcon className="size-4" />
-            Profile
-          </Link>
-        </Button>
+      <div className="border-t p-2 flex items-center justify-end">
         <SignOutButton
           variant="ghost"
           size="icon-sm"
@@ -137,7 +190,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
           <LogOutIcon className="size-4" />
         </SignOutButton>
       </div>
-    </aside>
+    </div>
   );
 }
 

@@ -7,11 +7,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const AUTH_ROUTES = new Set(["/login", "/email-password", "/google-login"]);
 
 function isProtectedPath(pathname: string) {
-  return (
-    pathname === "/profile" ||
-    pathname === "/rooms" ||
-    pathname.startsWith("/rooms/")
-  );
+  return pathname === "/rooms" || pathname.startsWith("/rooms/");
 }
 
 /**
@@ -50,8 +46,8 @@ function redirectCleanUrlWithCookies(
 
 /**
  * Next.js proxy (middleware): Supabase session refresh + route gating.
- * Guests can reach `/` for anonymous chat, while personal room/profile routes
- * still require a session. Signed-in users hitting auth routes go to `/`.
+ * Guests can reach `/` for anonymous chat, while personal room routes still
+ * require a session. Signed-in users hitting auth routes go to `/`.
  */
 export async function proxy(request: NextRequest) {
   const state: MiddlewareResponseState = {

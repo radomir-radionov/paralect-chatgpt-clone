@@ -26,6 +26,7 @@ export function ChatInput({ roomId, author }: Props) {
 
   return (
     <ChatComposerInput
+      innerClassName="max-w-[800px]"
       disabled={sendMessage.isPending}
       isSending={sendMessage.isPending}
       onSubmit={async ({ text, pendingImages, pendingDocuments, createdAt }) => {

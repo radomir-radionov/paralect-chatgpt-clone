@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type z from "zod";
+import type { z } from "zod";
 
-import { updateRoomModel } from "@domains/chat/actions/rooms";
+import { clientUpdateRoomModel } from "@domains/chat/queries/clientChatFetchers";
 import { chatKeys } from "@domains/chat/queries/keys";
 import type { RoomDetails } from "@domains/chat/queries/useRooms";
 import type { updateRoomModelSchema } from "@domains/chat/schemas/rooms";
@@ -15,7 +15,7 @@ export function useUpdateRoomModel(userId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: UpdateRoomModelInput) => updateRoomModel(data),
+    mutationFn: (data: UpdateRoomModelInput) => clientUpdateRoomModel(data),
     onMutate: async (variables) => {
       await Promise.all([
         queryClient.cancelQueries({ queryKey: chatKeys.room(variables.roomId) }),
@@ -58,4 +58,3 @@ export function useUpdateRoomModel(userId: string) {
     },
   });
 }
-

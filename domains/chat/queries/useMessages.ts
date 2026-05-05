@@ -7,20 +7,22 @@ import {
 
 import type { CachedMessage } from "@domains/chat/types/chat.types";
 
+import { chatFetchRetry } from "@shared/lib/query/chatFetchRetry";
+
 import { chatKeys } from "./keys";
 import { clientGetMessagesPage } from "./clientChatFetchers";
 import {
   getNextPageParamForMessages,
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
-} from "./message-fetchers";
+} from "./message-pagination";
 
 export {
-  fetchMessagesPage,
+  getNextPageParamForMessages,
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
-} from "./message-fetchers";
-export type { MessagesPage } from "./message-fetchers";
+} from "./message-pagination";
+export type { MessagesPage } from "./message-pagination";
 
 export const messagesInfiniteQueryOptions = (roomId: string) =>
   infiniteQueryOptions({
@@ -35,6 +37,7 @@ export const messagesInfiniteQueryOptions = (roomId: string) =>
     getNextPageParam: getNextPageParamForMessages,
     enabled: Boolean(roomId),
     refetchOnWindowFocus: true,
+    retry: chatFetchRetry,
   });
 
 export function useMessages(roomId: string) {
@@ -54,5 +57,6 @@ export function useMessages(roomId: string) {
     isFetchingNextPage: query.isFetchingNextPage,
     status: query.status,
     error: query.error,
+    refetch: query.refetch,
   };
 }

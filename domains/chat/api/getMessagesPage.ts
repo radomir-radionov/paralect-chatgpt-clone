@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { MessagesPage } from "@domains/chat/queries/message-fetchers";
+import type { MessagesPage } from "@domains/chat/queries/message-pagination";
 import { apiUrl } from "@shared/lib/http/apiUrl";
 import { fetchApiOk } from "@shared/lib/http/fetchApiOk";
 import { getForwardedRequestHeaders } from "@shared/lib/http/getForwardedRequestHeaders";

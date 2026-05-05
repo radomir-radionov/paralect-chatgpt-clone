@@ -1,13 +1,12 @@
+import "server-only";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/lib/supabase/types/database";
 
-import type { CachedMessage, MessageAttachment } from "@domains/chat/types/chat.types";
+import type { MessageAttachment } from "@domains/chat/types/chat.types";
 
-export const MESSAGES_PAGE_SIZE = 25;
-export const MESSAGES_INITIAL_PAGE_SIZE = 10;
-
-export type MessagesPage = CachedMessage[];
+import type { MessagesPage } from "@domains/chat/queries/message-pagination";
 
 export async function fetchMessagesPage(
   supabase: SupabaseClient<Database>,
@@ -48,15 +47,4 @@ export async function fetchMessagesPage(
             image_url: message.author?.image_url ?? null,
           },
   }));
-}
-
-export function getNextPageParamForMessages(
-  lastPage: MessagesPage,
-  _allPages: MessagesPage[],
-  lastPageParam: string | null | undefined,
-): string | undefined {
-  const expected =
-    lastPageParam == null ? MESSAGES_INITIAL_PAGE_SIZE : MESSAGES_PAGE_SIZE;
-  if (lastPage.length < expected) return undefined;
-  return lastPage[lastPage.length - 1]?.created_at ?? undefined;
 }

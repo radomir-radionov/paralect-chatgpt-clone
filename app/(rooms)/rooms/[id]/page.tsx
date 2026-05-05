@@ -12,10 +12,12 @@ import {
   getNextPageParamForMessages,
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
-} from "@domains/chat/queries/message-fetchers";
+} from "@domains/chat/queries/message-pagination";
 import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
 import { getQueryClient } from "@shared/lib/query/getQueryClient";
 import { HydrateClient } from "@shared/lib/query/HydrateClient";
+
+export const dynamic = "force-dynamic";
 
 export default async function RoomPage({
   params,
@@ -57,7 +59,7 @@ export default async function RoomPage({
 
   return (
     <HydrateClient state={dehydrate(queryClient)}>
-      <RoomClient roomId={id} userId={user.id} />
+      <RoomClient key={id} roomId={id} userId={user.id} />
     </HydrateClient>
   );
 }
