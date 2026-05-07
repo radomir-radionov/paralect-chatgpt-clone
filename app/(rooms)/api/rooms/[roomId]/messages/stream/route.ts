@@ -59,6 +59,7 @@ export async function POST(
     raw.mode === "assistant_only" ? ("assistant_only" as const) : ("user_and_assistant" as const);
   const assistantMessageId = raw.assistantId;
   const incomingAttachments = raw.attachments;
+  const requestedModelSlug = raw.modelSlug;
 
   if (typeof assistantMessageId !== "string") {
     return NextResponse.json(
@@ -78,7 +79,8 @@ export async function POST(
     return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
   }
 
-  const modelSlug = room.model_slug;
+  const overrideModelSlug = typeof requestedModelSlug === "string" ? requestedModelSlug : null;
+  const modelSlug = overrideModelSlug ?? room.model_slug;
   if (!isAiModelSlug(modelSlug)) {
     return NextResponse.json(
       { error: true, message: "This chat uses an unsupported AI model" },

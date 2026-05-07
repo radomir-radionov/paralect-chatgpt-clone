@@ -3,6 +3,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import type { AiModelSlug } from "@shared/lib/ai/model-registry";
+
 import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
 import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
 import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
@@ -20,9 +22,15 @@ type Props = {
   };
   /** When `true` the composer is locked (e.g. while another send is in flight). */
   disabled?: boolean;
+  modelSlugOverride?: AiModelSlug;
 };
 
-export function ChatInput({ roomId, author, disabled = false }: Props) {
+export function ChatInput({
+  roomId,
+  author,
+  disabled = false,
+  modelSlugOverride,
+}: Props) {
   const sendMessage = useSendMessage();
   const queryClient = useQueryClient();
 
@@ -193,6 +201,7 @@ export function ChatInput({ roomId, author, disabled = false }: Props) {
           roomId,
           createdAt,
           author,
+          modelSlug: modelSlugOverride,
         });
 
         // Revoke local previews after the message has had time to refetch persisted attachments.

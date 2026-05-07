@@ -16,4 +16,3 @@ export async function getMyProfile(options?: { readonly origin?: string }) {
   );
   return data.profile;
 }
-

@@ -37,4 +37,3 @@ export async function getMe(options?: { readonly origin?: string }) {
   if (user == null) throw new Error("Invalid /api/auth/me response");
   return user;
 }
-

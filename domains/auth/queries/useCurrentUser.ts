@@ -1,24 +1,17 @@
 "use client";
 
-import { queryOptions, useQuery } from "@tanstack/react-query";
-import type { User } from "@supabase/supabase-js";
+import { useQuery } from "@tanstack/react-query";
 
-import { authKeys } from "./keys";
-import { clientGetMe } from "./clientAuthFetchers";
+import { meQueryOptions } from "./clientAuthFetchers";
 
-export const currentUserQueryOptions = () =>
-  queryOptions({
-    queryKey: authKeys.currentUser,
-    queryFn: async (): Promise<User | null> => clientGetMe(),
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: true,
-  });
+export const currentUserQueryOptions = meQueryOptions;
 
 export function useCurrentUser() {
-  const query = useQuery(currentUserQueryOptions());
+  // keep the old public API, but share the implementation
+  const result = useQuery(meQueryOptions());
 
   return {
-    user: query.data ?? null,
-    isLoading: query.isLoading,
+    user: result.data ?? null,
+    isLoading: result.isLoading,
   };
 }

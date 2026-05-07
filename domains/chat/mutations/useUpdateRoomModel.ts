@@ -6,6 +6,7 @@ import type { z } from "zod";
 import { clientUpdateRoomModel } from "@domains/chat/queries/clientChatFetchers";
 import { chatKeys } from "@domains/chat/queries/keys";
 import type { RoomDetails } from "@domains/chat/queries/useRooms";
+import type { RoomListItem } from "@domains/chat/queries/room-fetchers";
 import type { updateRoomModelSchema } from "@domains/chat/schemas/rooms";
 import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 
@@ -17,13 +18,14 @@ export function useUpdateRoomModel(userId: string) {
   return useMutation({
     mutationFn: (data: UpdateRoomModelInput) => clientUpdateRoomModel(data),
     onMutate: async (variables) => {
-      await Promise.all([
-        queryClient.cancelQueries({ queryKey: chatKeys.room(variables.roomId) }),
-        queryClient.cancelQueries({ queryKey: chatKeys.joinedRooms(userId) }),
-      ]);
+      await queryClient.cancelQueries({ queryKey: chatKeys.room(variables.roomId) });
 
       const previousRoom = queryClient.getQueryData<RoomDetails | null>(
         chatKeys.room(variables.roomId),
+      );
+
+      const previousJoinedRooms = queryClient.getQueryData<RoomListItem[] | null>(
+        chatKeys.joinedRooms(userId),
       );
 
       if (previousRoom) {
@@ -33,7 +35,16 @@ export function useUpdateRoomModel(userId: string) {
         });
       }
 
-      return { previousRoom };
+      if (previousJoinedRooms) {
+        queryClient.setQueryData<RoomListItem[]>(
+          chatKeys.joinedRooms(userId),
+          previousJoinedRooms.map((room) =>
+            room.id === variables.roomId ? { ...room, modelSlug: variables.modelSlug } : room,
+          ),
+        );
+      }
+
+      return { previousRoom, previousJoinedRooms };
     },
     onError: (_err, variables, context) => {
       if (context?.previousRoom) {
@@ -42,17 +53,19 @@ export function useUpdateRoomModel(userId: string) {
           context.previousRoom,
         );
       }
+
+      if (context?.previousJoinedRooms) {
+        queryClient.setQueryData<RoomListItem[]>(
+          chatKeys.joinedRooms(userId),
+          context.previousJoinedRooms,
+        );
+      }
     },
     onSuccess: async (result, variables) => {
       if (result.error) return;
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.room(variables.roomId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.joinedRooms(userId),
-        }),
-      ]);
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.room(variables.roomId),
+      });
 
       broadcastChatInvalidation({ roomId: variables.roomId });
     },
