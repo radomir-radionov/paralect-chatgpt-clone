@@ -29,7 +29,9 @@ export async function fetchJoinedRooms(
     .eq("owner_id", userId)
     .order("last_message_at", { ascending: false });
 
-  if (error) return [];
+  if (error) {
+    throw new Error(`fetchJoinedRooms failed for user ${userId}: ${error.message}`);
+  }
 
   return data.map((room) => ({
     id: room.id,
@@ -51,7 +53,9 @@ export async function fetchRoom(
     .eq("owner_id", userId)
     .maybeSingle();
 
-  if (error) return null;
+  if (error) {
+    throw new Error(`fetchRoom failed for room ${roomId}: ${error.message}`);
+  }
   if (data == null) return null;
   return {
     id: data.id,

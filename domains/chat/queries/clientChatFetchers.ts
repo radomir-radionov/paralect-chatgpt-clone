@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { ApiError } from "@shared/lib/http/ApiError";
 import { fetchApiOk } from "@shared/lib/http/fetchApiOk";
 
 import {
@@ -94,17 +95,16 @@ export async function clientGetJoinedRooms(): Promise<RoomListItem[]> {
 }
 
 export async function clientGetRoom(roomId: string): Promise<RoomDetails | null> {
-  const res = await fetch(`/api/rooms/${roomId}`, { method: "GET", cache: "no-store" });
-  if (res.status === 404 || !res.ok) return null;
-  let json: unknown;
   try {
-    json = await res.json();
-  } catch {
-    return null;
+    const data = await fetchApiOk<{ room: RoomDetails }>(
+      `/api/rooms/${roomId}`,
+      { method: "GET", cache: "no-store" },
+    );
+    return data.room;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
   }
-  const data = json as { error?: boolean; room?: RoomDetails };
-  if (data.error !== false || data.room == null) return null;
-  return data.room;
 }
 
 export async function clientGetMessagesPage(
