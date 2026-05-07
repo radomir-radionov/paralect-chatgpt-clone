@@ -1,11 +1,13 @@
-export type ApiError = {
+import { ApiError } from "./ApiError";
+
+export type ApiErrorBody = {
   error: true;
   message: string;
 };
 
 export type ApiOk<T extends Record<string, unknown>> = { error: false } & T;
 
-function isApiError(value: unknown): value is ApiError {
+function isApiErrorBody(value: unknown): value is ApiErrorBody {
   return (
     typeof value === "object" &&
     value != null &&
@@ -28,20 +30,20 @@ export async function fetchApiOk<T extends Record<string, unknown>>(
   }
 
   if (!res.ok) {
-    if (isApiError(json)) throw new Error(json.message);
-    throw new Error(`Request failed (${res.status})`);
+    if (isApiErrorBody(json)) throw new ApiError(json.message, res.status);
+    throw new ApiError("Request failed", res.status);
   }
 
   if (typeof json !== "object" || json == null) {
-    throw new Error("Invalid JSON response");
+    throw new ApiError("Invalid JSON response", res.status);
   }
 
-  if (isApiError(json)) {
-    throw new Error(json.message);
+  if (isApiErrorBody(json)) {
+    throw new ApiError(json.message, res.status);
   }
 
   if ((json as { error?: unknown }).error !== false) {
-    throw new Error("Unexpected API response shape");
+    throw new ApiError("Unexpected API response shape", res.status);
   }
 
   return json as ApiOk<T>;

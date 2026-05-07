@@ -2,7 +2,6 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { chatKeys } from "@domains/chat/queries/keys";
 import {
   appendOptimisticMessage,
   applyMessageStatus,
@@ -10,6 +9,7 @@ import {
 } from "@domains/chat/queries/messagesCache";
 import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 import { readTextStream } from "@domains/chat/lib/readTextStream";
+import type { AiModelSlug } from "@shared/lib/ai/model-registry";
 
 const CHAT_PACING_ENABLED = process.env.NEXT_PUBLIC_CHAT_PACING !== "0";
 
@@ -124,6 +124,7 @@ type Input = {
   userMessageId: string;
   assistantId: string;
   createdAt: string;
+  modelSlug?: AiModelSlug;
 };
 
 type Result =
@@ -148,7 +149,7 @@ export function useStreamAssistantReply() {
   const queryClient = useQueryClient();
 
   return useMutation<Result, Error, Input>({
-    mutationFn: async ({ roomId, userMessageId, assistantId, createdAt }) => {
+    mutationFn: async ({ roomId, userMessageId, assistantId, createdAt, modelSlug }) => {
       let response: Response;
       try {
         response = await fetch(`/api/rooms/${roomId}/messages/stream`, {
@@ -158,6 +159,7 @@ export function useStreamAssistantReply() {
             mode: "assistant_only",
             userMessageId,
             assistantId,
+            modelSlug,
           }),
         });
       } catch (err) {
@@ -275,7 +277,6 @@ export function useStreamAssistantReply() {
       }
 
       applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "success");
-      queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.roomId) });
 
       broadcastChatInvalidation({ roomId: variables.roomId });
     },

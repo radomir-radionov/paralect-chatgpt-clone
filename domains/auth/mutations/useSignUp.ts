@@ -50,6 +50,7 @@ export function useSignUp() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: authKeys.currentUser });
+      await queryClient.invalidateQueries({ queryKey: authKeys.myProfile });
     },
   });
 }

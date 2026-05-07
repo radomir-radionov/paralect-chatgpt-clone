@@ -47,7 +47,6 @@ type GuestMessage = {
 
 type StoredGuestChat = {
   messages?: GuestMessage[];
-  remaining?: number;
   modelSlug?: AiModelSlug;
 };
 
@@ -92,7 +91,19 @@ function getGuestChatServerSnapshot(): string | null {
 function parseStoredGuestChat(raw: string | null): StoredGuestChat | null {
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as StoredGuestChat;
+    const parsed = JSON.parse(raw) as Partial<StoredGuestChat> & {
+      remaining?: unknown;
+      [key: string]: unknown;
+    };
+
+    // Keep localStorage schema stable: only persist fields we actually use.
+    // This also drops legacy fields like `remaining`.
+    return {
+      ...(Array.isArray(parsed.messages) ? { messages: parsed.messages } : {}),
+      ...(typeof parsed.modelSlug === "string"
+        ? { modelSlug: parsed.modelSlug as AiModelSlug }
+        : {}),
+    };
   } catch {
     return null;
   }
@@ -110,7 +121,8 @@ function updateStoredGuestChat(
 ) {
   if (typeof window === "undefined") return;
 
-  const prev = parseStoredGuestChat(window.localStorage.getItem(STORAGE_KEY)) ?? {};
+  const prev =
+    parseStoredGuestChat(window.localStorage.getItem(STORAGE_KEY)) ?? {};
   const next = updater(prev);
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -162,9 +174,7 @@ export function GuestChat() {
   );
 
   const messages = (stored?.messages ?? EMPTY_MESSAGES) as GuestMessage[];
-  const remainingQuestions = clampRemainingQuestions(
-    stored?.remaining ?? GUEST_FREE_QUESTION_LIMIT,
-  );
+  const [quotaRemaining, setQuotaRemaining] = useState<number | null>(null);
   const modelSlug =
     stored?.modelSlug &&
     AI_MODELS.some((model) => model.slug === stored.modelSlug)
@@ -174,12 +184,15 @@ export function GuestChat() {
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  const remainingQuestions = clampRemainingQuestions(
+    quotaRemaining ?? GUEST_FREE_QUESTION_LIMIT,
+  );
   const hasReachedQuestionLimit = remainingQuestions <= 0;
 
   useEffect(() => {
     let cancelled = false;
 
-    async function syncQuotaFromServer() {
+    async function loadQuotaFromServer() {
       try {
         const response = await fetch("/api/guest/quota", {
           method: "GET",
@@ -190,17 +203,14 @@ export function GuestChat() {
 
         const data = (await response.json()) as GuestQuotaResponse;
         if (!cancelled && !data.error) {
-          updateStoredGuestChat((prev) => ({
-            ...prev,
-            remaining: clampRemainingQuestions(data.remaining),
-          }));
+          setQuotaRemaining(clampRemainingQuestions(data.remaining));
         }
       } catch {
         // Keep the local quota state if the status request fails.
       }
     }
 
-    void syncQuotaFromServer();
+    void loadQuotaFromServer();
 
     return () => {
       cancelled = true;
@@ -385,11 +395,7 @@ export function GuestChat() {
 
           updateStoredGuestChat((prev) => ({
             ...prev,
-            messages: [
-              ...(prev.messages ?? []),
-              userMessage,
-              assistantMessage,
-            ],
+            messages: [...(prev.messages ?? []), userMessage, assistantMessage],
           }));
           setIsSending(true);
 
@@ -456,11 +462,11 @@ export function GuestChat() {
             }
 
             toast.error(errorMessage);
+            if (nextRemainingFromBody != null) {
+              setQuotaRemaining(nextRemainingFromBody);
+            }
             updateStoredGuestChat((prev) => ({
               ...prev,
-              ...(nextRemainingFromBody != null
-                ? { remaining: nextRemainingFromBody }
-                : {}),
               messages: (prev.messages ?? []).map((item) =>
                 item.id === assistantMessageId
                   ? {
@@ -481,10 +487,7 @@ export function GuestChat() {
             response.headers.get("X-Guest-Questions-Remaining"),
           );
           if (nextRemaining != null) {
-            updateStoredGuestChat((prev) => ({
-              ...prev,
-              remaining: nextRemaining,
-            }));
+            setQuotaRemaining(nextRemaining);
           }
 
           let receivedText = "";

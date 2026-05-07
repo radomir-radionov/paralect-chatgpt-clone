@@ -14,7 +14,11 @@ export const joinedRoomsQueryOptions = (userId: string) =>
     queryKey: chatKeys.joinedRooms(userId),
     queryFn: () => clientGetJoinedRooms(),
     enabled: Boolean(userId),
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
+    retryOnMount: false,
+    staleTime: 5_000,
+    retry: chatFetchRetry,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
   });
 
 export const roomQueryOptions = (roomId: string, userId: string) =>
@@ -22,8 +26,11 @@ export const roomQueryOptions = (roomId: string, userId: string) =>
     queryKey: chatKeys.room(roomId),
     queryFn: () => clientGetRoom(roomId),
     enabled: Boolean(roomId && userId),
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
+    retryOnMount: false,
+    staleTime: 5_000,
     retry: chatFetchRetry,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
   });
 
 export function useJoinedRooms(userId: string) {

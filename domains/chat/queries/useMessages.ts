@@ -33,8 +33,11 @@ export const messagesInfiniteQueryOptions = (roomId: string) =>
     initialPageParam: null as string | null,
     getNextPageParam: getNextPageParamForMessages,
     enabled: Boolean(roomId),
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
+    retryOnMount: false,
+    staleTime: 5_000,
     retry: chatFetchRetry,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
   });
 
 export function useMessages(

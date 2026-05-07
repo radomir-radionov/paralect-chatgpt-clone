@@ -8,9 +8,11 @@ import {
   applyMessageStatus,
   replaceMessage,
 } from "@domains/chat/queries/messagesCache";
+import { bumpJoinedRoomLastMessageAt } from "@domains/chat/queries/roomsCache";
 import type { Message, MessageAttachment } from "@domains/chat/types/chat.types";
 import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
 import { readTextStream } from "@domains/chat/lib/readTextStream";
+import type { AiModelSlug } from "@shared/lib/ai/model-registry";
 
 type SendMessageInput = {
   id: string;
@@ -18,6 +20,7 @@ type SendMessageInput = {
   text: string;
   roomId: string;
   createdAt: string;
+  modelSlug?: AiModelSlug;
   attachments?: Array<
     Pick<MessageAttachment, "id" | "kind" | "mime_type" | "size_bytes" | "width" | "height"> & {
       storagePath: string;
@@ -164,7 +167,7 @@ export function useSendMessage() {
 
   return useMutation<SendMessageResult, Error, SendMessageInput>({
     mutationKey: ["chat", "messages", "stream"],
-    mutationFn: async ({ id, assistantId, text, roomId, createdAt, attachments }) => {
+    mutationFn: async ({ id, assistantId, text, roomId, createdAt, attachments, modelSlug }) => {
       const url = `/api/rooms/${roomId}/messages/stream`;
       const bodyAttachments = attachments?.map((a) => ({
         id: a.id,
@@ -176,7 +179,13 @@ export function useSendMessage() {
         height: a.height ?? undefined,
         originalName: a.original_name ?? undefined,
       }));
-      const body = JSON.stringify({ id, assistantId, text, attachments: bodyAttachments });
+      const body = JSON.stringify({
+        id,
+        assistantId,
+        text,
+        attachments: bodyAttachments,
+        modelSlug,
+      });
 
       let response: Response;
       try {
@@ -324,8 +333,10 @@ export function useSendMessage() {
             ...result.userMessage,
             status: "success",
           });
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.joinedRooms(variables.author.id),
+          bumpJoinedRoomLastMessageAt(queryClient, {
+            userId: variables.author.id,
+            roomId: variables.roomId,
+            lastMessageAt: result.userMessage.created_at,
           });
 
           broadcastChatInvalidation({ roomId: variables.roomId });
@@ -349,11 +360,15 @@ export function useSendMessage() {
         "success",
       );
 
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.joinedRooms(variables.author.id),
+      bumpJoinedRoomLastMessageAt(queryClient, {
+        userId: variables.author.id,
+        roomId: variables.roomId,
+        lastMessageAt: variables.createdAt,
       });
 
-      queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.roomId) });
+      if (variables.attachments?.length) {
+        queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.roomId) });
+      }
 
       broadcastChatInvalidation({ roomId: variables.roomId });
     },

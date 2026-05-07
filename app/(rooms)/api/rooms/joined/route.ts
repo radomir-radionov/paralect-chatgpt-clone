@@ -16,7 +16,15 @@ export async function GET() {
   }
 
   const supabase = createSupabaseAdminClient();
-  const rooms = await fetchJoinedRooms(supabase, user.id);
 
-  return NextResponse.json({ error: false, rooms });
+  try {
+    const rooms = await fetchJoinedRooms(supabase, user.id);
+    return NextResponse.json({ error: false, rooms });
+  } catch (error) {
+    console.error("[api/rooms/joined]", error);
+    return NextResponse.json(
+      { error: true, message: "Internal server error" },
+      { status: 500 },
+    );
+  }
 }

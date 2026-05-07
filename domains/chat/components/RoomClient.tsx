@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowDownIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +16,11 @@ import {
 } from "@shared/components/ui/empty";
 import { Skeleton } from "@shared/components/ui/skeleton";
 import { useIntersectionTrigger } from "@shared/lib/dom/useIntersectionTrigger";
-import { AI_MODELS } from "@shared/lib/ai/model-registry";
+import {
+  type AiModelSlug,
+  AI_MODELS,
+  DEFAULT_AI_MODEL_SLUG,
+} from "@shared/lib/ai/model-registry";
 import { cn } from "@shared/lib/utils";
 
 import { ChatHeader } from "@domains/chat/components/ChatHeader";
@@ -25,7 +29,6 @@ import { ChatMessage } from "@domains/chat/components/ChatMessage";
 import { AiModelSelect } from "@domains/chat/components/AiModelSelect";
 import { useChatScroll } from "@domains/chat/hooks/useChatScroll";
 import { useStreamAssistantReply } from "@domains/chat/mutations/useStreamAssistantReply";
-import { useUpdateRoomModel } from "@domains/chat/mutations/useUpdateRoomModel";
 import { useRoom } from "@domains/chat/queries/useRooms";
 import { useMessages } from "@domains/chat/queries/useMessages";
 import { useProfile } from "@domains/auth/queries/useProfile";
@@ -45,19 +48,15 @@ function isGrouped(
   return diff < GROUP_THRESHOLD_MS;
 }
 
-function RoomShellSkeleton() {
+function RoomMainSkeleton() {
   return (
-    <div
-      className="flex h-full flex-col"
-      aria-busy="true"
-      role="status"
-    >
-      <span className="sr-only">Loading chat…</span>
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
-        <Skeleton className="h-5 w-28" />
-        <Skeleton className="h-9 w-[min(220px,60vw)]" />
-      </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-hidden p-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className="min-h-0 flex-1 space-y-4 overflow-hidden p-4"
+        aria-busy="true"
+        role="status"
+      >
+        <span className="sr-only">Loading chat…</span>
         <Skeleton className="h-16 w-[min(100%,28rem)]" />
         <Skeleton className="ml-auto h-16 w-[min(100%,22rem)]" />
         <Skeleton className="h-20 w-[min(100%,26rem)]" />
@@ -91,6 +90,11 @@ export function RoomClient({
   roomId: string;
   userId: string;
 }) {
+  const localModelStorageKey = useMemo(
+    () => `paralect_room_model_override:${roomId}`,
+    [roomId],
+  );
+
   const sendMessageMutationsForRoom = useIsMutating({
     predicate: (mutation) => {
       const key = mutation.options.mutationKey;
@@ -105,7 +109,6 @@ export function RoomClient({
 
   const roomQuery = useRoom(roomId, userId);
   const profileQuery = useProfile(userId);
-  const updateRoomModelMutation = useUpdateRoomModel(userId);
   const streamAssistantReply = useStreamAssistantReply();
   const streamedForUserMessageIdsRef = useRef(new Set<string>());
 
@@ -134,10 +137,36 @@ export function RoomClient({
     finishPreserveScrollOnOlderLoad,
   } = useChatScroll(messages.length);
 
+  const persistedModelSlug = useMemo((): AiModelSlug | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(localModelStorageKey);
+      if (!raw) return null;
+      if (AI_MODELS.some((m) => m.slug === raw)) {
+        return raw as AiModelSlug;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }, [localModelStorageKey]);
+
+  const [modelSlugByRoomId, setModelSlugByRoomId] = useState<Record<string, AiModelSlug>>(
+    () => ({}),
+  );
+
+  const effectiveModelSlugForStream = useMemo(() => {
+    const room = roomQuery.data ?? null;
+    const roomModelSlug = (room?.modelSlug as AiModelSlug | undefined) ?? null;
+    return modelSlugByRoomId[roomId] ?? persistedModelSlug ?? roomModelSlug;
+  }, [modelSlugByRoomId, persistedModelSlug, roomId, roomQuery.data]);
+
   useEffect(() => {
     // Prevent racing the initial `user_and_assistant` stream (e.g. first message started
     // from `NewRoomComposer`) with an `assistant_only` regeneration.
     if (sendMessageMutationsForRoom > 0) return;
+
+    if (!effectiveModelSlugForStream) return;
 
     const last = messages[messages.length - 1];
     if (!last) return;
@@ -154,13 +183,20 @@ export function RoomClient({
         userMessageId: last.id,
         assistantId: crypto.randomUUID(),
         createdAt: last.created_at,
+        modelSlug: effectiveModelSlugForStream,
       });
 
       if (result.error) {
         toast.error(result.message);
       }
     })();
-  }, [messages, roomId, sendMessageMutationsForRoom, streamAssistantReply]);
+  }, [
+    effectiveModelSlugForStream,
+    messages,
+    roomId,
+    sendMessageMutationsForRoom,
+    streamAssistantReply,
+  ]);
 
   useEffect(() => {
     if (isFetchingNextPage) {
@@ -180,10 +216,41 @@ export function RoomClient({
     enabled: hasNextPage && !isFetchingNextPage && status !== "error",
   });
 
+  const handleHeaderModelChange = useCallback(
+    (next: AiModelSlug) => {
+      setModelSlugByRoomId((prev) => ({ ...prev, [roomId]: next }));
+      try {
+        window.localStorage.setItem(localModelStorageKey, next);
+      } catch {
+        // ignore
+      }
+    },
+    [localModelStorageKey, roomId],
+  );
+
+  const headerModelSelectClassName = cn(
+    "transition-[color,box-shadow] duration-200",
+    "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
+  );
+
+  const effectiveModelSlugForHeader = useMemo(() => {
+    const roomModelSlug =
+      roomQuery.data?.modelSlug as AiModelSlug | undefined;
+    return (
+      modelSlugByRoomId[roomId] ??
+      persistedModelSlug ??
+      roomModelSlug ??
+      DEFAULT_AI_MODEL_SLUG
+    );
+  }, [
+    modelSlugByRoomId,
+    persistedModelSlug,
+    roomId,
+    roomQuery.data?.modelSlug,
+  ]);
+
   const room = roomQuery.data ?? null;
   const profile = profileQuery.data ?? null;
-
-  const [modelSlug, setModelSlug] = useState<(typeof AI_MODELS)[number]["slug"] | "">("");
 
   const roomOrProfileError = roomQuery.isError || profileQuery.isError;
   const roomOrProfileLoading =
@@ -224,10 +291,21 @@ export function RoomClient({
   }
 
   if (roomOrProfileLoading || room == null || profile == null) {
-    return <RoomShellSkeleton />;
+    return (
+      <div className="flex h-full flex-col">
+        <ChatHeader
+          right={
+            <AiModelSelect
+              value={effectiveModelSlugForHeader}
+              onChange={handleHeaderModelChange}
+              className={headerModelSelectClassName}
+            />
+          }
+        />
+        <RoomMainSkeleton />
+      </div>
+    );
   }
-
-  const roomModelSlug = room.modelSlug as (typeof AI_MODELS)[number]["slug"];
 
   const messagesInitialLoading =
     status === "pending" && messages.length === 0 && error == null;
@@ -243,28 +321,9 @@ export function RoomClient({
       <ChatHeader
         right={
           <AiModelSelect
-            value={modelSlug || roomModelSlug}
-            onChange={async (next) => {
-              setModelSlug(next);
-
-              const result = await updateRoomModelMutation.mutateAsync({
-                roomId,
-                modelSlug: next as (typeof AI_MODELS)[number]["slug"],
-              });
-
-              if (result.error) {
-                toast.error(result.message ?? "Failed to update model");
-                setModelSlug(roomModelSlug);
-                return;
-              }
-
-              toast.success("Model updated");
-            }}
-            disabled={updateRoomModelMutation.isPending}
-            className={cn(
-              "transition-[color,box-shadow] duration-200",
-              "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
-            )}
+            value={effectiveModelSlugForHeader}
+            onChange={handleHeaderModelChange}
+            className={headerModelSelectClassName}
           />
         }
       />
@@ -361,16 +420,17 @@ export function RoomClient({
             </Button>
           </div>
         ) : null}
-      </div>
+        </div>
 
-      <ChatInput
-        roomId={room.id}
-        author={{
-          id: profile.id,
-          name: profile.name,
-          image_url: profile.image_url,
-        }}
-      />
-    </div>
+        <ChatInput
+          roomId={room.id}
+          author={{
+            id: profile.id,
+            name: profile.name,
+            image_url: profile.image_url,
+          }}
+          modelSlugOverride={effectiveModelSlugForHeader}
+        />
+      </div>
   );
 }

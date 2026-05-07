@@ -5,7 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import { apiUrl } from "@shared/lib/http/apiUrl";
 import { getForwardedRequestHeaders } from "@shared/lib/http/getForwardedRequestHeaders";
 import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
-import type { ApiError } from "@shared/lib/http/fetchApiOk";
+import type { ApiErrorBody } from "@shared/lib/http/fetchApiOk";
 
 export async function getMe(options?: { readonly origin?: string }) {
   const origin = options?.origin ?? (await getRequestOrigin());
@@ -26,8 +26,8 @@ export async function getMe(options?: { readonly origin?: string }) {
       // ignore
     }
     const message =
-      typeof (json as ApiError | null)?.message === "string"
-        ? (json as ApiError).message
+      typeof (json as ApiErrorBody | null)?.message === "string"
+        ? (json as ApiErrorBody).message
         : `Request failed (${res.status})`;
     throw new Error(message);
   }
@@ -37,4 +37,3 @@ export async function getMe(options?: { readonly origin?: string }) {
   if (user == null) throw new Error("Invalid /api/auth/me response");
   return user;
 }
-

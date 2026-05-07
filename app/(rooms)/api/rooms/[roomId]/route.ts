@@ -28,13 +28,22 @@ export async function GET(
 
   const { roomId } = await params;
   const supabase = createSupabaseAdminClient();
-  const room = await fetchRoom(supabase, roomId, user.id);
 
-  if (room == null) {
-    return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+  try {
+    const room = await fetchRoom(supabase, roomId, user.id);
+
+    if (room == null) {
+      return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ error: false, room });
+  } catch (error) {
+    console.error("[api/rooms/:roomId GET]", error);
+    return NextResponse.json(
+      { error: true, message: "Internal server error" },
+      { status: 500 },
+    );
   }
-
-  return NextResponse.json({ error: false, room });
 }
 
 export async function PATCH(

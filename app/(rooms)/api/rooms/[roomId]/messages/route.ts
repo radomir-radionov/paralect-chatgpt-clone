@@ -34,14 +34,22 @@ export async function GET(
 
   const supabase = createSupabaseAdminClient();
 
-  const room = await fetchRoom(supabase, roomId, user.id);
-  if (room == null) {
-    return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+  try {
+    const room = await fetchRoom(supabase, roomId, user.id);
+    if (room == null) {
+      return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+    }
+
+    const items = await fetchMessagesPage(supabase, roomId, cursor, limit);
+    const nextCursor =
+      items.length < limit ? null : (items[items.length - 1]?.created_at ?? null);
+
+    return NextResponse.json({ error: false, items, nextCursor });
+  } catch (error) {
+    console.error("[api/rooms/:roomId/messages]", error);
+    return NextResponse.json(
+      { error: true, message: "Internal server error" },
+      { status: 500 },
+    );
   }
-
-  const items = await fetchMessagesPage(supabase, roomId, cursor, limit);
-  const nextCursor =
-    items.length < limit ? null : (items[items.length - 1]?.created_at ?? null);
-
-  return NextResponse.json({ error: false, items, nextCursor });
 }
