@@ -20,6 +20,7 @@ import { cn } from "@shared/lib/utils";
 import { ChatHeader } from "@domains/chat/components/ChatHeader";
 import { ChatInput } from "@domains/chat/components/ChatInput";
 import { ChatMessage } from "@domains/chat/components/ChatMessage";
+import { AiModelSelect } from "@domains/chat/components/AiModelSelect";
 import { useChatScroll } from "@domains/chat/hooks/useChatScroll";
 import { useStreamAssistantReply } from "@domains/chat/mutations/useStreamAssistantReply";
 import { useUpdateRoomModel } from "@domains/chat/mutations/useUpdateRoomModel";
@@ -158,7 +159,7 @@ export function RoomClient({
   const room = roomQuery.data ?? null;
   const profile = profileQuery.data ?? null;
 
-  const [modelSlug, setModelSlug] = useState("");
+  const [modelSlug, setModelSlug] = useState<(typeof AI_MODELS)[number]["slug"] | "">("");
 
   const roomOrProfileError = roomQuery.isError || profileQuery.isError;
   const roomOrProfileLoading =
@@ -202,6 +203,8 @@ export function RoomClient({
     return <RoomShellSkeleton />;
   }
 
+  const roomModelSlug = room.modelSlug as (typeof AI_MODELS)[number]["slug"];
+
   const messagesInitialLoading =
     status === "pending" && messages.length === 0 && error == null;
   const showMessagesEmpty =
@@ -211,10 +214,9 @@ export function RoomClient({
     <div className="flex h-full flex-col">
       <ChatHeader
         right={
-          <select
-            value={modelSlug || room.modelSlug}
-            onChange={async (e) => {
-              const next = e.target.value;
+          <AiModelSelect
+            value={modelSlug || roomModelSlug}
+            onChange={async (next) => {
               setModelSlug(next);
 
               const result = await updateRoomModelMutation.mutateAsync({
@@ -224,7 +226,7 @@ export function RoomClient({
 
               if (result.error) {
                 toast.error(result.message ?? "Failed to update model");
-                setModelSlug(room.modelSlug);
+                setModelSlug(roomModelSlug);
                 return;
               }
 
@@ -232,19 +234,10 @@ export function RoomClient({
             }}
             disabled={updateRoomModelMutation.isPending}
             className={cn(
-              "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] duration-200",
-              "focus-visible:ring-[3px]",
-              "disabled:cursor-not-allowed disabled:opacity-50",
+              "transition-[color,box-shadow] duration-200",
               "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
             )}
-            aria-label="AI model"
-          >
-            {AI_MODELS.map((model) => (
-              <option key={model.slug} value={model.slug}>
-                {model.label}
-              </option>
-            ))}
-          </select>
+          />
         }
       />
 

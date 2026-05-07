@@ -18,8 +18,10 @@ import {
 } from "@shared/lib/ai/model-registry";
 import { cn } from "@shared/lib/utils";
 
+import { AiModelSelect } from "@domains/chat/components/AiModelSelect";
 import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
 import { ChatMessage } from "@domains/chat/components/ChatMessage";
+import { readTextStream } from "@domains/chat/lib/readTextStream";
 import { GUEST_FREE_QUESTION_LIMIT } from "@domains/chat/lib/guestQuotaConstants";
 import type {
   MessageAttachment,
@@ -80,25 +82,6 @@ function parseRemainingHeader(value: string | null) {
 function clampRemainingQuestions(value: number) {
   if (!Number.isFinite(value)) return GUEST_FREE_QUESTION_LIMIT;
   return Math.max(0, Math.min(GUEST_FREE_QUESTION_LIMIT, Math.trunc(value)));
-}
-
-async function readTextStream(
-  response: Response,
-  onChunk: (chunk: string) => void,
-) {
-  if (response.body == null) return;
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (value) onChunk(decoder.decode(value, { stream: true }));
-  }
-
-  const remainder = decoder.decode();
-  if (remainder) onChunk(remainder);
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -221,24 +204,15 @@ export function GuestChat() {
             </Button>
           </div>
           <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
-            <select
+            <AiModelSelect
               value={modelSlug}
-              onChange={(e) => setModelSlug(e.target.value as AiModelSlug)}
+              onChange={setModelSlug}
               disabled={isSending}
               className={cn(
-                "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 min-w-0 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
-                "focus-visible:ring-[3px]",
-                "disabled:cursor-not-allowed disabled:opacity-50",
+                "min-w-0",
                 "min-w-[160px] w-full flex-1 max-w-none sm:w-[220px] sm:max-w-none sm:flex-none",
               )}
-              aria-label="AI model"
-            >
-              {AI_MODELS.map((model) => (
-                <option key={model.slug} value={model.slug}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
+            />
             <Button
               variant="outline"
               size="lg"

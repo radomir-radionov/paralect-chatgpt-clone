@@ -1,38 +1,23 @@
 "use client";
 
-import { FileTextIcon, ImagePlusIcon, LoaderCircleIcon, SendIcon, XIcon } from "lucide-react";
+import { LoaderCircleIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupTextarea,
-} from "@shared/components/ui/input-group";
 import { Skeleton } from "@shared/components/ui/skeleton";
 import {
-  AI_MODELS,
   DEFAULT_AI_MODEL_SLUG,
   type AiModelSlug,
 } from "@shared/lib/ai/model-registry";
 import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
-import { cn } from "@shared/lib/utils";
 
 import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
+import { AiModelSelect } from "@domains/chat/components/AiModelSelect";
 import { ChatHeader } from "@domains/chat/components/ChatHeader";
+import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
 import { ChatMessage } from "@domains/chat/components/ChatMessage";
-import { usePendingChatDocuments } from "@domains/chat/hooks/usePendingChatDocuments";
-import { usePendingChatImages } from "@domains/chat/hooks/usePendingChatImages";
-import {
-  CHAT_DOCUMENT_ACCEPT,
-  CHAT_DOCUMENTS_MAX_ATTACHMENTS,
-} from "@domains/chat/lib/chatDocuments";
-import { CHAT_IMAGES_MAX_ATTACHMENTS } from "@domains/chat/lib/chatImages";
 import { useStartRoomWithFirstMessage } from "@domains/chat/mutations/useStartRoomWithFirstMessage";
-
-const MAX_LENGTH = 2000;
 
 type OptimisticBubble = {
   id: string;
@@ -45,140 +30,121 @@ export function NewRoomComposer() {
   const { user, isLoading: sessionLoading } = useCurrentUser();
   const mutation = useStartRoomWithFirstMessage(user?.id ?? null);
 
-  const [message, setMessage] = useState("");
   const [modelSlug, setModelSlug] = useState<AiModelSlug>(
     DEFAULT_AI_MODEL_SLUG,
   );
   const [optimistic, setOptimistic] = useState<OptimisticBubble | null>(null);
-  const { images, previews, fileInputRef, addImages, removeImage, clearImages, onPaste } =
-    usePendingChatImages();
-  const {
-    documents,
-    documentPreviews,
-    documentInputRef,
-    addDocuments,
-    removeDocument,
-    clearDocuments,
-  } = usePendingChatDocuments();
 
-  const remaining = MAX_LENGTH - message.length;
-  const isOverLimit = remaining < 0;
-  const showCounter = remaining <= 200;
-
-  async function handleSubmit(e?: { preventDefault(): void }) {
-    e?.preventDefault();
-    const text = message.trim();
-    const hasImages = images.length > 0;
-    const hasDocuments = documents.length > 0;
-    if ((!text && !hasImages && !hasDocuments) || mutation.isPending || isOverLimit) {
-      return;
-    }
+  async function handleSubmit(payload: {
+    readonly text: string;
+    readonly pendingImages: Array<{ id: string; file: File; previewUrl: string }>;
+    readonly pendingDocuments: Array<{ id: string; file: File }>;
+    readonly createdAt: string;
+  }) {
+    const text = payload.text.trim();
+    const hasImages = payload.pendingImages.length > 0;
+    const hasDocuments = payload.pendingDocuments.length > 0;
 
     if ((hasImages || hasDocuments) && !user?.id) {
       toast.error("You must be signed in to upload files");
       return;
     }
 
-    setMessage("");
-    const pendingImages = hasImages ? images.slice() : [];
-    const pendingDocuments = hasDocuments ? documents.slice() : [];
-    clearImages();
-    clearDocuments();
     const messageId = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-    setOptimistic({ id: messageId, text, createdAt });
+    setOptimistic({ id: messageId, text, createdAt: payload.createdAt });
 
-    let attachments:
-      | Array<{
-          id: string;
-          kind: "image" | "document";
-          storagePath: string;
-          mimeType: string;
-          sizeBytes: number;
-          width?: number;
-          height?: number;
-          originalName?: string;
-        }>
-      | undefined;
+    const previewUrlsToRevoke = payload.pendingImages.map((img) => img.previewUrl);
 
-    if (hasImages || hasDocuments) {
-      const uploaded: NonNullable<typeof attachments> = [];
+    try {
+      let attachments:
+        | Array<{
+            id: string;
+            kind: "image" | "document";
+            storagePath: string;
+            mimeType: string;
+            sizeBytes: number;
+            width?: number;
+            height?: number;
+            originalName?: string;
+          }>
+        | undefined;
 
-      for (const img of pendingImages) {
-        const attachmentId = crypto.randomUUID();
-        try {
-          const path = await uploadChatAttachment({
-            file: img.file,
-            kind: "image",
-            attachmentId,
-            messageId,
-          });
+      if (hasImages || hasDocuments) {
+        const uploaded: NonNullable<typeof attachments> = [];
 
-          uploaded.push({
-            id: attachmentId,
-            kind: "image",
-            storagePath: path,
-            mimeType: img.file.type || "application/octet-stream",
-            sizeBytes: img.file.size,
-          });
-        } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Failed to upload image");
-          return;
+        for (const img of payload.pendingImages) {
+          const attachmentId = crypto.randomUUID();
+          try {
+            const path = await uploadChatAttachment({
+              file: img.file,
+              kind: "image",
+              attachmentId,
+              messageId,
+            });
+
+            uploaded.push({
+              id: attachmentId,
+              kind: "image",
+              storagePath: path,
+              mimeType: img.file.type || "application/octet-stream",
+              sizeBytes: img.file.size,
+            });
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to upload image");
+            return;
+          }
         }
-      }
 
-      for (const doc of pendingDocuments) {
-        const attachmentId = crypto.randomUUID();
-        try {
-          const path = await uploadChatAttachment({
-            file: doc.file,
-            kind: "document",
-            attachmentId,
-            messageId,
-            originalName: doc.file.name,
-          });
+        for (const doc of payload.pendingDocuments) {
+          const attachmentId = crypto.randomUUID();
+          try {
+            const path = await uploadChatAttachment({
+              file: doc.file,
+              kind: "document",
+              attachmentId,
+              messageId,
+              originalName: doc.file.name,
+            });
 
-          uploaded.push({
-            id: attachmentId,
-            kind: "document",
-            storagePath: path,
-            mimeType: doc.file.type || "application/octet-stream",
-            sizeBytes: doc.file.size,
-            originalName: doc.file.name,
-          });
-        } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Failed to upload document");
-          return;
+            uploaded.push({
+              id: attachmentId,
+              kind: "document",
+              storagePath: path,
+              mimeType: doc.file.type || "application/octet-stream",
+              sizeBytes: doc.file.size,
+              originalName: doc.file.name,
+            });
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to upload document");
+            return;
+          }
         }
+
+        attachments = uploaded;
       }
 
-      attachments = uploaded;
-    }
+      const result = await mutation.mutateAsync({
+        messageId,
+        text,
+        modelSlug,
+        attachments,
+      });
 
-    const result = await mutation.mutateAsync({
-      messageId,
-      text,
-      modelSlug,
-      attachments,
-    });
-
-    if (result.error) {
-      toast.error(result.message);
-      if (result.roomId) {
-        router.push(`/rooms/${result.roomId}`);
+      if (result.error) {
+        toast.error(result.message);
+        if (result.roomId) {
+          router.push(`/rooms/${result.roomId}`);
+        }
+        return;
       }
-      return;
-    }
 
-    router.push(`/rooms/${result.roomId}`);
+      router.push(`/rooms/${result.roomId}`);
+    } finally {
+      previewUrlsToRevoke.forEach((url) => URL.revokeObjectURL(url));
+    }
   }
 
-  const canSend = useMemo(() => {
-    const hasText = message.trim().length > 0;
-    const hasImages = images.length > 0;
-    const hasDocuments = documents.length > 0;
-    return !mutation.isPending && !isOverLimit && (hasText || hasImages || hasDocuments);
-  }, [documents.length, images.length, isOverLimit, message, mutation.isPending]);
+  const isCreating = useMemo(() => optimistic != null, [optimistic]);
 
   if (sessionLoading && user == null) {
     return (
@@ -204,24 +170,12 @@ export function NewRoomComposer() {
     <div className="h-full flex flex-col">
       <ChatHeader
         right={
-          <select
+          <AiModelSelect
             value={modelSlug}
-            onChange={(e) => setModelSlug(e.target.value as AiModelSlug)}
-            disabled={mutation.isPending}
-            className={cn(
-              "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
-              "focus-visible:ring-[3px]",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
-            )}
-            aria-label="AI model"
-          >
-            {AI_MODELS.map((model) => (
-              <option key={model.slug} value={model.slug}>
-                {model.label}
-              </option>
-            ))}
-          </select>
+            onChange={setModelSlug}
+            disabled={mutation.isPending || isCreating}
+            className="w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none"
+          />
         }
       />
 
@@ -262,164 +216,15 @@ export function NewRoomComposer() {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col justify-end pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:justify-center sm:pb-6">
-            <div className="mx-auto w-full min-w-0 max-w-[800px] px-3 sm:px-4">
-              <form onSubmit={handleSubmit}>
-                <InputGroup data-disabled={mutation.isPending || undefined}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files ?? []);
-                      if (files.length > 0) addImages(files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                  <input
-                    ref={documentInputRef}
-                    type="file"
-                    accept={CHAT_DOCUMENT_ACCEPT}
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files ?? []);
-                      if (files.length > 0) addDocuments(files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                  {previews.length > 0 && (
-                    <InputGroupAddon align="block-start" className="border-b w-full">
-                      <div className="flex flex-wrap gap-2">
-                        {previews.map((p) => (
-                          <div
-                            key={p.id}
-                            className="relative h-20 w-20 overflow-hidden rounded-md border border-border/60 bg-muted"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={p.url}
-                              alt={p.name}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                            <button
-                              type="button"
-                              className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-full bg-background/80 shadow-sm hover:bg-background"
-                              onClick={() => removeImage(p.id)}
-                              aria-label="Remove image"
-                              title="Remove"
-                            >
-                              <XIcon className="size-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </InputGroupAddon>
-                  )}
-                  {documentPreviews.length > 0 && (
-                    <InputGroupAddon align="block-start" className="border-b w-full">
-                      <div className="flex flex-wrap gap-2">
-                        {documentPreviews.map((doc) => (
-                          <div
-                            key={doc.id}
-                            className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted px-2.5 py-2 text-sm"
-                          >
-                            <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 truncate">{doc.name}</span>
-                            <button
-                              type="button"
-                              className="inline-flex size-6 shrink-0 items-center justify-center rounded-full hover:bg-background"
-                              onClick={() => removeDocument(doc.id)}
-                              aria-label="Remove document"
-                              title="Remove"
-                            >
-                              <XIcon className="size-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </InputGroupAddon>
-                  )}
-                  <InputGroupTextarea
-                    placeholder="Ask anything…"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    className="field-sizing-content min-h-auto max-h-40"
-                    disabled={mutation.isPending}
-                    aria-invalid={isOverLimit || undefined}
-                    onPaste={onPaste}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmit();
-                      }
-                    }}
-                  />
-                  <InputGroupAddon align="inline-start" className="self-end pb-1.5">
-                    <div className="flex items-center gap-1">
-                      <InputGroupButton
-                        type="button"
-                        aria-label="Attach image"
-                        title="Attach image"
-                        size="icon-sm"
-                        disabled={
-                          mutation.isPending || images.length >= CHAT_IMAGES_MAX_ATTACHMENTS
-                        }
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <ImagePlusIcon />
-                      </InputGroupButton>
-                      <InputGroupButton
-                        type="button"
-                        aria-label="Attach document"
-                        title="Attach document"
-                        size="icon-sm"
-                        disabled={
-                          mutation.isPending ||
-                          documents.length >= CHAT_DOCUMENTS_MAX_ATTACHMENTS
-                        }
-                        onClick={() => documentInputRef.current?.click()}
-                      >
-                        <FileTextIcon />
-                      </InputGroupButton>
-                    </div>
-                  </InputGroupAddon>
-                  <InputGroupAddon
-                    align="inline-end"
-                    className="self-end pb-1.5"
-                  >
-                    {showCounter && (
-                      <span
-                        className={
-                          isOverLimit
-                            ? "text-xs text-destructive font-medium"
-                            : "text-xs text-muted-foreground"
-                        }
-                      >
-                        {remaining}
-                      </span>
-                    )}
-                    <InputGroupButton
-                      type="submit"
-                      aria-label="Send"
-                      title="Send (Enter)"
-                      size="icon-sm"
-                      disabled={!canSend}
-                    >
-                      {mutation.isPending ? (
-                        <LoaderCircleIcon className="animate-spin" />
-                      ) : (
-                        <SendIcon />
-                      )}
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                </InputGroup>
-                <p className="mt-1.5 text-xs text-muted-foreground/60 hidden sm:block">
-                  Enter to send · Shift+Enter for new line · Paste image or attach files
-                </p>
-              </form>
+            <div className="mx-auto w-full min-w-0 max-w-[800px] px-0 sm:px-0">
+              <ChatComposerInput
+                disabled={mutation.isPending}
+                isSending={mutation.isPending}
+                innerClassName="max-w-[800px]"
+                onSubmit={({ text, pendingImages, pendingDocuments, createdAt }) =>
+                  handleSubmit({ text, pendingImages, pendingDocuments, createdAt })
+                }
+              />
             </div>
           </div>
         )}
