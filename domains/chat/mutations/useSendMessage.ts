@@ -10,6 +10,7 @@ import {
 } from "@domains/chat/queries/messagesCache";
 import type { Message, MessageAttachment } from "@domains/chat/types/chat.types";
 import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
+import { readTextStream } from "@domains/chat/lib/readTextStream";
 
 type SendMessageInput = {
   id: string;
@@ -144,24 +145,6 @@ async function paceAssistantReveal(options: {
   });
 }
 
-async function readTextStream(
-  response: Response,
-  onChunk: (chunk: string) => void,
-) {
-  if (response.body == null) return;
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (value) onChunk(decoder.decode(value, { stream: true }));
-  }
-
-  const remainder = decoder.decode();
-  if (remainder) onChunk(remainder);
-}
-
 export function useSendMessage() {
   const queryClient = useQueryClient();
 
@@ -180,6 +163,7 @@ export function useSendMessage() {
   }
 
   return useMutation<SendMessageResult, Error, SendMessageInput>({
+    mutationKey: ["chat", "messages", "stream"],
     mutationFn: async ({ id, assistantId, text, roomId, createdAt, attachments }) => {
       const url = `/api/rooms/${roomId}/messages/stream`;
       const bodyAttachments = attachments?.map((a) => ({

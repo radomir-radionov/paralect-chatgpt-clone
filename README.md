@@ -2,6 +2,9 @@
 
 Next.js (App Router) + TypeScript app with Supabase Auth and an AI chat experience (streaming, threads, attachments).
 
+task link: https://www.paralect.com/academy/product-engineer/projects/chatbot
+record: https://www.loom.com/share/c546758b556c401a8348c98e885f2a7e
+
 ## Prerequisites
 
 - Node.js **20+** (recommended)
@@ -41,7 +44,7 @@ You need a Supabase project with:
 
 Apply migrations to your Supabase project **in timestamp order**. Either:
 
-- **Supabase CLI (linked project):** from the `paralect` directory, `npm run db:push`, or  
+- **Supabase CLI (linked project):** from the `paralect` directory, `npm run db:push`, or
 - **Dashboard:** SQL Editor — paste and run each file in order.
 
 #### Supabase CLI linking (required for `npm run db:push` / `npm run db:types`)

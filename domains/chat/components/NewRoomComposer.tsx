@@ -1,153 +1,210 @@
 "use client";
 
-import { FileTextIcon, ImagePlusIcon, LoaderCircleIcon, SendIcon, XIcon } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupTextarea,
-} from "@shared/components/ui/input-group";
 import { Skeleton } from "@shared/components/ui/skeleton";
 import {
-  AI_MODELS,
   DEFAULT_AI_MODEL_SLUG,
   type AiModelSlug,
 } from "@shared/lib/ai/model-registry";
-import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
-import { cn } from "@shared/lib/utils";
 
 import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
+import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
+import { AiModelSelect } from "@domains/chat/components/AiModelSelect";
 import { ChatHeader } from "@domains/chat/components/ChatHeader";
-import { ChatMessage } from "@domains/chat/components/ChatMessage";
-import { usePendingChatDocuments } from "@domains/chat/hooks/usePendingChatDocuments";
-import { usePendingChatImages } from "@domains/chat/hooks/usePendingChatImages";
 import {
-  CHAT_DOCUMENT_ACCEPT,
-  CHAT_DOCUMENTS_MAX_ATTACHMENTS,
-} from "@domains/chat/lib/chatDocuments";
-import { CHAT_IMAGES_MAX_ATTACHMENTS } from "@domains/chat/lib/chatImages";
-import { useStartRoomWithFirstMessage } from "@domains/chat/mutations/useStartRoomWithFirstMessage";
+  ChatComposerInput,
+  type ComposerPendingDocument,
+  type ComposerPendingImage,
+} from "@domains/chat/components/ChatComposerInput";
+import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
+import {
+  clientCreateRoom,
+  clientDeleteRoom,
+} from "@domains/chat/queries/clientChatFetchers";
+import { chatKeys } from "@domains/chat/queries/keys";
+import type { RoomDetails, RoomListItem } from "@domains/chat/queries/room-fetchers";
 
-const MAX_LENGTH = 2000;
+const MAX_NAME_LEN = 60;
 
-type OptimisticBubble = {
-  id: string;
-  text: string;
-  createdAt: string;
-};
+function deriveRoomNameFromText(text: string): string {
+  const normalized = text.replaceAll(/\s+/g, " ").trim();
+  if (normalized.length === 0) return "AI Chat";
+  if (normalized.length <= MAX_NAME_LEN) return normalized;
+  return `${normalized.slice(0, MAX_NAME_LEN).trimEnd()}…`;
+}
 
 export function NewRoomComposer() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, isLoading: sessionLoading } = useCurrentUser();
-  const mutation = useStartRoomWithFirstMessage(user?.id ?? null);
+  const sendMessage = useSendMessage();
 
-  const [message, setMessage] = useState("");
-  const [modelSlug, setModelSlug] = useState<AiModelSlug>(
-    DEFAULT_AI_MODEL_SLUG,
-  );
-  const [optimistic, setOptimistic] = useState<OptimisticBubble | null>(null);
-  const { images, previews, fileInputRef, addImages, removeImage, clearImages, onPaste } =
-    usePendingChatImages();
-  const {
-    documents,
-    documentPreviews,
-    documentInputRef,
-    addDocuments,
-    removeDocument,
-    clearDocuments,
-  } = usePendingChatDocuments();
+  const [modelSlug, setModelSlug] = useState<AiModelSlug>(DEFAULT_AI_MODEL_SLUG);
+  const [isStartingChat, setIsStartingChat] = useState(false);
 
-  const remaining = MAX_LENGTH - message.length;
-  const isOverLimit = remaining < 0;
-  const showCounter = remaining <= 200;
+  async function handleSubmit(payload: {
+    readonly text: string;
+    readonly pendingImages: ComposerPendingImage[];
+    readonly pendingDocuments: ComposerPendingDocument[];
+    readonly createdAt: string;
+  }) {
+    const text = payload.text.trim();
+    const hasImages = payload.pendingImages.length > 0;
+    const hasDocuments = payload.pendingDocuments.length > 0;
 
-  async function handleSubmit(e?: { preventDefault(): void }) {
-    e?.preventDefault();
-    const text = message.trim();
-    const hasImages = images.length > 0;
-    const hasDocuments = documents.length > 0;
-    if ((!text && !hasImages && !hasDocuments) || mutation.isPending || isOverLimit) {
+    if (!user?.id) {
+      toast.error("You must be signed in to start a chat");
       return;
     }
 
-    if ((hasImages || hasDocuments) && !user?.id) {
-      toast.error("You must be signed in to upload files");
+    if (!text && !hasImages && !hasDocuments) return;
+
+    const derivedName = deriveRoomNameFromText(
+      text || (hasDocuments ? "Document" : "Image"),
+    );
+
+    setIsStartingChat(true);
+
+    const createResult = await clientCreateRoom({
+      name: derivedName,
+      modelSlug,
+    });
+
+    if (createResult.error) {
+      toast.error(createResult.message);
+      setIsStartingChat(false);
       return;
     }
 
-    setMessage("");
-    const pendingImages = hasImages ? images.slice() : [];
-    const pendingDocuments = hasDocuments ? documents.slice() : [];
-    clearImages();
-    clearDocuments();
+    const roomId = createResult.roomId;
     const messageId = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
-    setOptimistic({ id: messageId, text, createdAt });
+    const assistantId = crypto.randomUUID();
+
+    const roomStub: RoomDetails = {
+      id: roomId,
+      name: derivedName,
+      modelSlug,
+      lastMessageAt: null,
+    };
+    queryClient.setQueryData(chatKeys.room(roomId), roomStub);
+
+    queryClient.setQueryData<RoomListItem[] | undefined>(
+      chatKeys.joinedRooms(user.id),
+      (current) => {
+        const next: RoomListItem = {
+          id: roomId,
+          name: derivedName,
+          modelSlug,
+          lastMessageAt: payload.createdAt,
+        };
+        if (!current) return [next];
+        return [next, ...current.filter((r) => r.id !== roomId)];
+      },
+    );
+
+    const author = {
+      id: user.id,
+      name:
+        typeof user.user_metadata?.name === "string"
+          ? user.user_metadata.name
+          : "You",
+      image_url:
+        typeof user.user_metadata?.avatar_url === "string"
+          ? user.user_metadata.avatar_url
+          : null,
+    };
+
+    const imageAttachmentIds = payload.pendingImages.map(() => crypto.randomUUID());
+    const documentAttachmentIds = payload.pendingDocuments.map(() => crypto.randomUUID());
 
     let attachments:
-      | Array<{
-          id: string;
-          kind: "image" | "document";
-          storagePath: string;
-          mimeType: string;
-          sizeBytes: number;
-          width?: number;
-          height?: number;
-          originalName?: string;
-        }>
+      | Array<
+          | {
+              id: string;
+              kind: "image";
+              mime_type: string;
+              size_bytes: number;
+              width: number | null;
+              height: number | null;
+              storagePath: string;
+              preview_url?: string;
+              original_name?: string;
+            }
+          | {
+              id: string;
+              kind: "document";
+              mime_type: string;
+              size_bytes: number;
+              width: null;
+              height: null;
+              storagePath: string;
+              original_name: string;
+            }
+        >
       | undefined;
 
     if (hasImages || hasDocuments) {
       const uploaded: NonNullable<typeof attachments> = [];
 
-      for (const img of pendingImages) {
-        const attachmentId = crypto.randomUUID();
+      for (const [index, img] of payload.pendingImages.entries()) {
+        const attachmentId = imageAttachmentIds[index] ?? crypto.randomUUID();
         try {
           const path = await uploadChatAttachment({
             file: img.file,
             kind: "image",
             attachmentId,
             messageId,
+            roomId,
           });
-
           uploaded.push({
             id: attachmentId,
             kind: "image",
+            mime_type: img.file.type || "application/octet-stream",
+            size_bytes: img.file.size,
+            width: null,
+            height: null,
             storagePath: path,
-            mimeType: img.file.type || "application/octet-stream",
-            sizeBytes: img.file.size,
+            preview_url: img.previewUrl,
           });
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to upload image");
+          payload.pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
+          await clientDeleteRoom(roomId);
+          setIsStartingChat(false);
           return;
         }
       }
 
-      for (const doc of pendingDocuments) {
-        const attachmentId = crypto.randomUUID();
+      for (const [index, doc] of payload.pendingDocuments.entries()) {
+        const attachmentId = documentAttachmentIds[index] ?? crypto.randomUUID();
         try {
           const path = await uploadChatAttachment({
             file: doc.file,
             kind: "document",
             attachmentId,
             messageId,
+            roomId,
             originalName: doc.file.name,
           });
-
           uploaded.push({
             id: attachmentId,
             kind: "document",
+            mime_type: doc.file.type || "application/octet-stream",
+            size_bytes: doc.file.size,
+            width: null,
+            height: null,
             storagePath: path,
-            mimeType: doc.file.type || "application/octet-stream",
-            sizeBytes: doc.file.size,
-            originalName: doc.file.name,
+            original_name: doc.file.name,
           });
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to upload document");
+          payload.pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
+          await clientDeleteRoom(roomId);
+          setIsStartingChat(false);
           return;
         }
       }
@@ -155,30 +212,37 @@ export function NewRoomComposer() {
       attachments = uploaded;
     }
 
-    const result = await mutation.mutateAsync({
-      messageId,
-      text,
-      modelSlug,
-      attachments,
-    });
+    const previewUrls = payload.pendingImages.map((i) => i.previewUrl);
 
-    if (result.error) {
-      toast.error(result.message);
-      if (result.roomId) {
-        router.push(`/rooms/${result.roomId}`);
-      }
-      return;
-    }
+    sendMessage.mutate(
+      {
+        id: messageId,
+        assistantId,
+        text,
+        attachments,
+        roomId,
+        createdAt: payload.createdAt,
+        author,
+      },
+      {
+        onSuccess: (result) => {
+          if (result.error) {
+            toast.error(result.message);
+          }
+        },
+        onSettled: () => {
+          if (previewUrls.length > 0) {
+            window.setTimeout(() => {
+              previewUrls.forEach((u) => URL.revokeObjectURL(u));
+            }, 60_000);
+          }
+        },
+      },
+    );
 
-    router.push(`/rooms/${result.roomId}`);
+    setIsStartingChat(false);
+    router.push(`/rooms/${roomId}`);
   }
-
-  const canSend = useMemo(() => {
-    const hasText = message.trim().length > 0;
-    const hasImages = images.length > 0;
-    const hasDocuments = documents.length > 0;
-    return !mutation.isPending && !isOverLimit && (hasText || hasImages || hasDocuments);
-  }, [documents.length, images.length, isOverLimit, message, mutation.isPending]);
 
   if (sessionLoading && user == null) {
     return (
@@ -204,225 +268,25 @@ export function NewRoomComposer() {
     <div className="h-full flex flex-col">
       <ChatHeader
         right={
-          <select
+          <AiModelSelect
             value={modelSlug}
-            onChange={(e) => setModelSlug(e.target.value as AiModelSlug)}
-            disabled={mutation.isPending}
-            className={cn(
-              "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
-              "focus-visible:ring-[3px]",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              "w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none",
-            )}
-            aria-label="AI model"
-          >
-            {AI_MODELS.map((model) => (
-              <option key={model.slug} value={model.slug}>
-                {model.label}
-              </option>
-            ))}
-          </select>
+            onChange={setModelSlug}
+            className="w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none"
+          />
         }
       />
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {optimistic ? (
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="py-2">
-                <ChatMessage
-                  id={optimistic.id}
-                  text={optimistic.text}
-                  created_at={optimistic.createdAt}
-                  author_id={user?.id ?? "pending-user"}
-                  role="user"
-                  author={{ name: "You", image_url: null }}
-                  isOwn
-                  status="pending"
-                />
-                <ChatMessage
-                  id="optimistic-assistant"
-                  text="Thinking…"
-                  created_at={optimistic.createdAt}
-                  author_id={null}
-                  role="assistant"
-                  author={{ name: "Assistant", image_url: null }}
-                  isOwn={false}
-                  status="pending"
-                />
-              </div>
-            </div>
-
-            <div className="px-0 py-3 border-t shrink-0">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <LoaderCircleIcon className="size-3.5 animate-spin" />
-                Creating chat…
-              </div>
-            </div>
+        <div className="flex min-h-0 flex-1 flex-col justify-end pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:justify-center sm:pb-6">
+          <div className="mx-auto w-full min-w-0 max-w-[800px] px-0 sm:px-0">
+            <ChatComposerInput
+              innerClassName="mx-auto max-w-[800px]"
+              disabled={isStartingChat || sendMessage.isPending}
+              isSending={isStartingChat || sendMessage.isPending}
+              onSubmit={(p) => void handleSubmit(p)}
+            />
           </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col justify-end pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:justify-center sm:pb-6">
-            <div className="mx-auto w-full min-w-0 max-w-[800px] px-3 sm:px-4">
-              <form onSubmit={handleSubmit}>
-                <InputGroup data-disabled={mutation.isPending || undefined}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files ?? []);
-                      if (files.length > 0) addImages(files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                  <input
-                    ref={documentInputRef}
-                    type="file"
-                    accept={CHAT_DOCUMENT_ACCEPT}
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files ?? []);
-                      if (files.length > 0) addDocuments(files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                  {previews.length > 0 && (
-                    <InputGroupAddon align="block-start" className="border-b w-full">
-                      <div className="flex flex-wrap gap-2">
-                        {previews.map((p) => (
-                          <div
-                            key={p.id}
-                            className="relative h-20 w-20 overflow-hidden rounded-md border border-border/60 bg-muted"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={p.url}
-                              alt={p.name}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                            <button
-                              type="button"
-                              className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-full bg-background/80 shadow-sm hover:bg-background"
-                              onClick={() => removeImage(p.id)}
-                              aria-label="Remove image"
-                              title="Remove"
-                            >
-                              <XIcon className="size-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </InputGroupAddon>
-                  )}
-                  {documentPreviews.length > 0 && (
-                    <InputGroupAddon align="block-start" className="border-b w-full">
-                      <div className="flex flex-wrap gap-2">
-                        {documentPreviews.map((doc) => (
-                          <div
-                            key={doc.id}
-                            className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted px-2.5 py-2 text-sm"
-                          >
-                            <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 truncate">{doc.name}</span>
-                            <button
-                              type="button"
-                              className="inline-flex size-6 shrink-0 items-center justify-center rounded-full hover:bg-background"
-                              onClick={() => removeDocument(doc.id)}
-                              aria-label="Remove document"
-                              title="Remove"
-                            >
-                              <XIcon className="size-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </InputGroupAddon>
-                  )}
-                  <InputGroupTextarea
-                    placeholder="Ask anything…"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    className="field-sizing-content min-h-auto max-h-40"
-                    disabled={mutation.isPending}
-                    aria-invalid={isOverLimit || undefined}
-                    onPaste={onPaste}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmit();
-                      }
-                    }}
-                  />
-                  <InputGroupAddon align="inline-start" className="self-end pb-1.5">
-                    <div className="flex items-center gap-1">
-                      <InputGroupButton
-                        type="button"
-                        aria-label="Attach image"
-                        title="Attach image"
-                        size="icon-sm"
-                        disabled={
-                          mutation.isPending || images.length >= CHAT_IMAGES_MAX_ATTACHMENTS
-                        }
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <ImagePlusIcon />
-                      </InputGroupButton>
-                      <InputGroupButton
-                        type="button"
-                        aria-label="Attach document"
-                        title="Attach document"
-                        size="icon-sm"
-                        disabled={
-                          mutation.isPending ||
-                          documents.length >= CHAT_DOCUMENTS_MAX_ATTACHMENTS
-                        }
-                        onClick={() => documentInputRef.current?.click()}
-                      >
-                        <FileTextIcon />
-                      </InputGroupButton>
-                    </div>
-                  </InputGroupAddon>
-                  <InputGroupAddon
-                    align="inline-end"
-                    className="self-end pb-1.5"
-                  >
-                    {showCounter && (
-                      <span
-                        className={
-                          isOverLimit
-                            ? "text-xs text-destructive font-medium"
-                            : "text-xs text-muted-foreground"
-                        }
-                      >
-                        {remaining}
-                      </span>
-                    )}
-                    <InputGroupButton
-                      type="submit"
-                      aria-label="Send"
-                      title="Send (Enter)"
-                      size="icon-sm"
-                      disabled={!canSend}
-                    >
-                      {mutation.isPending ? (
-                        <LoaderCircleIcon className="animate-spin" />
-                      ) : (
-                        <SendIcon />
-                      )}
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                </InputGroup>
-                <p className="mt-1.5 text-xs text-muted-foreground/60 hidden sm:block">
-                  Enter to send · Shift+Enter for new line · Paste image or attach files
-                </p>
-              </form>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

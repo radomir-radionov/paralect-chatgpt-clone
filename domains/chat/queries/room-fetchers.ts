@@ -15,6 +15,8 @@ export type RoomDetails = {
   id: string;
   name: string;
   modelSlug: string;
+  /** When null, the room has no messages yet (skip SSR message prefetch so client optimistic UI is preserved). */
+  lastMessageAt: string | null;
 };
 
 export async function fetchJoinedRooms(
@@ -44,12 +46,17 @@ export async function fetchRoom(
 ): Promise<RoomDetails | null> {
   const { data, error } = await supabase
     .from("chat_room")
-    .select("id, name, model_slug")
+    .select("id, name, model_slug, last_message_at")
     .eq("id", roomId)
     .eq("owner_id", userId)
     .maybeSingle();
 
   if (error) return null;
   if (data == null) return null;
-  return { id: data.id, name: data.name, modelSlug: data.model_slug };
+  return {
+    id: data.id,
+    name: data.name,
+    modelSlug: data.model_slug,
+    lastMessageAt: data.last_message_at,
+  };
 }

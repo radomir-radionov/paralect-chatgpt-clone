@@ -30,8 +30,8 @@ export function AuthPageShell({
 }: AuthPageShellProps) {
   const headerContainerClassName =
     headerVariant === "minimal"
-      ? "mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-3 sm:px-4"
-      : "mx-auto flex min-h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-3 py-3 sm:px-4";
+      ? "mx-auto flex h-14 w-full max-w-[1920px] items-center justify-between gap-4 px-3 sm:px-4"
+      : "mx-auto flex min-h-14 w-full max-w-[1920px] items-center justify-between gap-4 px-3 py-3 sm:px-4";
 
   const mainClassName = `mx-auto w-full max-w-[600px] px-3 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-4 ${
     centerContent

@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@shared/components/ui/button";
@@ -18,8 +24,10 @@ import {
 } from "@shared/lib/ai/model-registry";
 import { cn } from "@shared/lib/utils";
 
+import { AiModelSelect } from "@domains/chat/components/AiModelSelect";
 import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
 import { ChatMessage } from "@domains/chat/components/ChatMessage";
+import { readTextStream } from "@domains/chat/lib/readTextStream";
 import { GUEST_FREE_QUESTION_LIMIT } from "@domains/chat/lib/guestQuotaConstants";
 import type {
   MessageAttachment,
@@ -54,18 +62,59 @@ type GuestQuotaResponse =
       message: string;
     };
 
-function readStoredGuestChat(): StoredGuestChat | null {
+const EMPTY_MESSAGES: ReadonlyArray<GuestMessage> = [];
+
+const guestChatListeners = new Set<() => void>();
+
+function subscribeGuestChat(callback: () => void) {
+  guestChatListeners.add(callback);
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY) callback();
+  };
+  window.addEventListener("storage", onStorage);
+
+  return () => {
+    guestChatListeners.delete(callback);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function getGuestChatSnapshot(): string | null {
   if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(STORAGE_KEY);
+}
 
+function getGuestChatServerSnapshot(): string | null {
+  return null;
+}
+
+function parseStoredGuestChat(raw: string | null): StoredGuestChat | null {
+  if (!raw) return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as StoredGuestChat;
-    return parsed;
+    return JSON.parse(raw) as StoredGuestChat;
   } catch {
     return null;
   }
+}
+
+/**
+ * Mutate the persisted guest chat in localStorage and notify all
+ * `useSyncExternalStore` subscribers so React schedules a re-render.
+ *
+ * This replaces the old write `useEffect`: callers update storage at the
+ * point of mutation and React state stays in sync via the subscription.
+ */
+function updateStoredGuestChat(
+  updater: (prev: StoredGuestChat) => StoredGuestChat,
+) {
+  if (typeof window === "undefined") return;
+
+  const prev = parseStoredGuestChat(window.localStorage.getItem(STORAGE_KEY)) ?? {};
+  const next = updater(prev);
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  for (const cb of guestChatListeners) cb();
 }
 
 function parseRemainingHeader(value: string | null) {
@@ -82,25 +131,6 @@ function clampRemainingQuestions(value: number) {
   return Math.max(0, Math.min(GUEST_FREE_QUESTION_LIMIT, Math.trunc(value)));
 }
 
-async function readTextStream(
-  response: Response,
-  onChunk: (chunk: string) => void,
-) {
-  if (response.body == null) return;
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (value) onChunk(decoder.decode(value, { stream: true }));
-  }
-
-  const remainder = decoder.decode();
-  if (remainder) onChunk(remainder);
-}
-
 async function fileToBase64(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
@@ -115,43 +145,36 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 export function GuestChat() {
-  const [messages, setMessages] = useState<GuestMessage[]>([]);
-  const [remainingQuestions, setRemainingQuestions] = useState(
-    GUEST_FREE_QUESTION_LIMIT,
+  const storedRaw = useSyncExternalStore(
+    subscribeGuestChat,
+    getGuestChatSnapshot,
+    getGuestChatServerSnapshot,
   );
-  const [modelSlug, setModelSlug] = useState<AiModelSlug>(
-    DEFAULT_AI_MODEL_SLUG,
+
+  const stored = useMemo(() => parseStoredGuestChat(storedRaw), [storedRaw]);
+
+  // `false` during SSR + first client render, `true` after hydration.
+  // Used to delay the empty-state marketing copy until storage has been read.
+  const isHydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
   );
+
+  const messages = (stored?.messages ?? EMPTY_MESSAGES) as GuestMessage[];
+  const remainingQuestions = clampRemainingQuestions(
+    stored?.remaining ?? GUEST_FREE_QUESTION_LIMIT,
+  );
+  const modelSlug =
+    stored?.modelSlug &&
+    AI_MODELS.some((model) => model.slug === stored.modelSlug)
+      ? stored.modelSlug
+      : DEFAULT_AI_MODEL_SLUG;
+
   const [isSending, setIsSending] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const hasReachedQuestionLimit = remainingQuestions <= 0;
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      const stored = readStoredGuestChat();
-
-      if (stored?.messages) {
-        setMessages(stored.messages);
-      }
-
-      if (typeof stored?.remaining === "number") {
-        setRemainingQuestions(clampRemainingQuestions(stored.remaining));
-      }
-
-      if (
-        stored?.modelSlug &&
-        AI_MODELS.some((model) => model.slug === stored.modelSlug)
-      ) {
-        setModelSlug(stored.modelSlug);
-      }
-
-      setHydrated(true);
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,7 +190,10 @@ export function GuestChat() {
 
         const data = (await response.json()) as GuestQuotaResponse;
         if (!cancelled && !data.error) {
-          setRemainingQuestions(clampRemainingQuestions(data.remaining));
+          updateStoredGuestChat((prev) => ({
+            ...prev,
+            remaining: clampRemainingQuestions(data.remaining),
+          }));
         }
       } catch {
         // Keep the local quota state if the status request fails.
@@ -181,25 +207,13 @@ export function GuestChat() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) return;
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        messages,
-        remaining: remainingQuestions,
-        modelSlug,
-      } satisfies StoredGuestChat),
-    );
-  }, [hydrated, messages, modelSlug, remainingQuestions]);
-
+  const lastMessage = messages.at(-1);
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
-  }, [messages]);
+  }, [messages.length, lastMessage?.text, lastMessage?.status]);
 
   return (
     <div className="flex h-full flex-col">
@@ -221,24 +235,17 @@ export function GuestChat() {
             </Button>
           </div>
           <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto">
-            <select
+            <AiModelSelect
               value={modelSlug}
-              onChange={(e) => setModelSlug(e.target.value as AiModelSlug)}
+              onChange={(next) =>
+                updateStoredGuestChat((prev) => ({ ...prev, modelSlug: next }))
+              }
               disabled={isSending}
               className={cn(
-                "border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 h-9 min-w-0 rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow]",
-                "focus-visible:ring-[3px]",
-                "disabled:cursor-not-allowed disabled:opacity-50",
+                "min-w-0",
                 "min-w-[160px] w-full flex-1 max-w-none sm:w-[220px] sm:max-w-none sm:flex-none",
               )}
-              aria-label="AI model"
-            >
-              {AI_MODELS.map((model) => (
-                <option key={model.slug} value={model.slug}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
+            />
             <Button
               variant="outline"
               size="lg"
@@ -251,22 +258,27 @@ export function GuestChat() {
         </div>
       </header>
 
-      <div className="relative flex-1 min-h-0 overflow-y-auto">
-        {messages.length === 0 ? (
+      <div
+        className="relative flex-1 min-h-0 overflow-y-auto"
+        aria-busy={!isHydrated}
+      >
+        {!isHydrated ? (
+          <div className="h-full min-h-[40vh]" />
+        ) : messages.length === 0 ? (
           <div className="flex h-full flex-col justify-end px-3 pb-2 pt-2 sm:justify-center sm:px-0 sm:pb-3">
             <div className="flex w-full justify-center">
               <div className="w-full max-w-[800px] sm:px-4">
-              <Empty className="border-0 bg-transparent py-10">
-                <EmptyHeader>
-                  <EmptyTitle className="text-xl font-semibold tracking-tight sm:text-2xl">
-                    Ask your first question.
-                  </EmptyTitle>
-                  <EmptyDescription className="mt-1">
-                    Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free
-                    questions. Sign in anytime to save your history.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
+                <Empty className="border-0 bg-transparent py-10">
+                  <EmptyHeader>
+                    <EmptyTitle className="text-xl font-semibold tracking-tight sm:text-2xl">
+                      Ask your first question.
+                    </EmptyTitle>
+                    <EmptyDescription className="mt-1">
+                      Try Paralect Chat with {GUEST_FREE_QUESTION_LIMIT} free
+                      questions. Sign in anytime to save your history.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               </div>
             </div>
           </div>
@@ -294,7 +306,7 @@ export function GuestChat() {
         )}
       </div>
 
-      {hasReachedQuestionLimit && (
+      {isHydrated && hasReachedQuestionLimit && (
         <div className="border-t px-3 pt-3 sm:px-4">
           <div className="mx-auto mb-3 max-w-[800px] rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
             <p className="font-medium">You have used your 3 free questions.</p>
@@ -318,7 +330,7 @@ export function GuestChat() {
       <ChatComposerInput
         disabled={isSending || hasReachedQuestionLimit}
         isSending={isSending}
-        innerClassName="max-w-[800px]"
+        innerClassName="mx-auto max-w-[800px]"
         placeholder={
           hasReachedQuestionLimit ? "Sign in to ask more" : "Ask anything…"
         }
@@ -369,7 +381,16 @@ export function GuestChat() {
             status: "pending",
           };
 
-          setMessages((current) => [...current, userMessage, assistantMessage]);
+          const previousMessages = messages;
+
+          updateStoredGuestChat((prev) => ({
+            ...prev,
+            messages: [
+              ...(prev.messages ?? []),
+              userMessage,
+              assistantMessage,
+            ],
+          }));
           setIsSending(true);
 
           const outgoingAttachments = await Promise.all([
@@ -395,7 +416,7 @@ export function GuestChat() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 modelSlug,
-                messages: [...messages, userMessage].map((item) => ({
+                messages: [...previousMessages, userMessage].map((item) => ({
                   role: item.role,
                   text: item.text,
                 })),
@@ -406,19 +427,21 @@ export function GuestChat() {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to send message";
             toast.error(errorMessage);
-            setMessages((current) =>
-              current.map((item) =>
+            updateStoredGuestChat((prev) => ({
+              ...prev,
+              messages: (prev.messages ?? []).map((item) =>
                 item.id === userMessageId || item.id === assistantMessageId
-                  ? { ...item, status: "error" }
+                  ? { ...item, status: "error" as MessageStatus }
                   : item,
               ),
-            );
+            }));
             setIsSending(false);
             return;
           }
 
           if (!response.ok) {
             let errorMessage = "Failed to send message";
+            let nextRemainingFromBody: number | null = null;
             try {
               const data = (await response.json()) as {
                 message?: string;
@@ -426,22 +449,30 @@ export function GuestChat() {
               };
               if (typeof data.message === "string") errorMessage = data.message;
               if (typeof data.remaining === "number") {
-                setRemainingQuestions(clampRemainingQuestions(data.remaining));
+                nextRemainingFromBody = clampRemainingQuestions(data.remaining);
               }
             } catch {
               // ignore
             }
 
             toast.error(errorMessage);
-            setMessages((current) =>
-              current.map((item) =>
+            updateStoredGuestChat((prev) => ({
+              ...prev,
+              ...(nextRemainingFromBody != null
+                ? { remaining: nextRemainingFromBody }
+                : {}),
+              messages: (prev.messages ?? []).map((item) =>
                 item.id === assistantMessageId
-                  ? { ...item, text: errorMessage, status: "error" }
+                  ? {
+                      ...item,
+                      text: errorMessage,
+                      status: "error" as MessageStatus,
+                    }
                   : item.id === userMessageId
-                    ? { ...item, status: "error" }
+                    ? { ...item, status: "error" as MessageStatus }
                     : item,
               ),
-            );
+            }));
             setIsSending(false);
             return;
           }
@@ -450,7 +481,10 @@ export function GuestChat() {
             response.headers.get("X-Guest-Questions-Remaining"),
           );
           if (nextRemaining != null) {
-            setRemainingQuestions(nextRemaining);
+            updateStoredGuestChat((prev) => ({
+              ...prev,
+              remaining: nextRemaining,
+            }));
           }
 
           let receivedText = "";
@@ -462,13 +496,18 @@ export function GuestChat() {
             if (!queuedText) return;
             receivedText += queuedText;
             queuedText = "";
-            setMessages((current) =>
-              current.map((item) =>
+            updateStoredGuestChat((prev) => ({
+              ...prev,
+              messages: (prev.messages ?? []).map((item) =>
                 item.id === assistantMessageId
-                  ? { ...item, text: receivedText, status: "pending" }
+                  ? {
+                      ...item,
+                      text: receivedText,
+                      status: "pending" as MessageStatus,
+                    }
                   : item,
               ),
-            );
+            }));
           };
 
           try {
@@ -480,28 +519,34 @@ export function GuestChat() {
             });
 
             flush();
-            setMessages((current) =>
-              current.map((item) =>
+            updateStoredGuestChat((prev) => ({
+              ...prev,
+              messages: (prev.messages ?? []).map((item) =>
                 item.id === userMessageId || item.id === assistantMessageId
-                  ? { ...item, status: "success" }
+                  ? { ...item, status: "success" as MessageStatus }
                   : item,
               ),
-            );
+            }));
           } catch (error) {
             const errorMessage =
               error instanceof Error
                 ? error.message
                 : "Streaming response failed";
             toast.error(errorMessage);
-            setMessages((current) =>
-              current.map((item) =>
+            updateStoredGuestChat((prev) => ({
+              ...prev,
+              messages: (prev.messages ?? []).map((item) =>
                 item.id === assistantMessageId
-                  ? { ...item, text: receivedText, status: "error" }
+                  ? {
+                      ...item,
+                      text: receivedText,
+                      status: "error" as MessageStatus,
+                    }
                   : item.id === userMessageId
-                    ? { ...item, status: "error" }
+                    ? { ...item, status: "error" as MessageStatus }
                     : item,
               ),
-            );
+            }));
           } finally {
             setIsSending(false);
           }
