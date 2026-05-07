@@ -30,6 +30,14 @@ export function useJoinedRooms(userId: string) {
   return useQuery(joinedRoomsQueryOptions(userId));
 }
 
-export function useRoom(roomId: string, userId: string) {
-  return useQuery(roomQueryOptions(roomId, userId));
+export function useRoom(
+  roomId: string,
+  userId: string,
+  options?: { readonly enabled?: boolean },
+) {
+  const base = roomQueryOptions(roomId, userId);
+  return useQuery({
+    ...base,
+    enabled: options?.enabled === false ? false : base.enabled,
+  });
 }

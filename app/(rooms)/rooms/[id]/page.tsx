@@ -29,33 +29,38 @@ export default async function RoomPage({
   const user = await getMe({ origin });
   if (user == null) return notFound();
 
-  const [room, profile] = await Promise.all([
-    getRoom(id, { origin }),
-    getMyProfile({ origin }),
-  ]);
+  const profile = await getMyProfile({ origin });
+  if (profile == null) return notFound();
 
-  if (room == null || profile == null) return notFound();
+  const room = await getRoom(id, { origin });
 
   const queryClient = getQueryClient();
-
-  queryClient.setQueryData(chatKeys.room(id), room);
   queryClient.setQueryData(authKeys.profile(user.id), profile);
 
-  await queryClient.prefetchInfiniteQuery({
-    queryKey: chatKeys.messages(id),
-    queryFn: async ({ pageParam }) => {
-      const limit = pageParam == null ? MESSAGES_INITIAL_PAGE_SIZE : MESSAGES_PAGE_SIZE;
-      const { items } = await getMessagesPage({
-        roomId: id,
-        cursor: pageParam,
-        limit,
-        origin,
+  if (room != null) {
+    queryClient.setQueryData(chatKeys.room(id), room);
+
+    // Brand-new rooms have `last_message_at` null until the first message is
+    // persisted. Skipping SSR message prefetch avoids HydrationBoundary
+    // replacing in-flight client optimistic messages with an empty server page.
+    if (room.lastMessageAt != null) {
+      await queryClient.prefetchInfiniteQuery({
+        queryKey: chatKeys.messages(id),
+        queryFn: async ({ pageParam }) => {
+          const limit = pageParam == null ? MESSAGES_INITIAL_PAGE_SIZE : MESSAGES_PAGE_SIZE;
+          const { items } = await getMessagesPage({
+            roomId: id,
+            cursor: pageParam,
+            limit,
+            origin,
+          });
+          return items;
+        },
+        initialPageParam: null as string | null,
+        getNextPageParam: getNextPageParamForMessages,
       });
-      return items;
-    },
-    initialPageParam: null as string | null,
-    getNextPageParam: getNextPageParamForMessages,
-  });
+    }
+  }
 
   return (
     <HydrateClient state={dehydrate(queryClient)}>

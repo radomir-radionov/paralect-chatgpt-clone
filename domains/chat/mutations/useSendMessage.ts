@@ -163,6 +163,7 @@ export function useSendMessage() {
   }
 
   return useMutation<SendMessageResult, Error, SendMessageInput>({
+    mutationKey: ["chat", "messages", "stream"],
     mutationFn: async ({ id, assistantId, text, roomId, createdAt, attachments }) => {
       const url = `/api/rooms/${roomId}/messages/stream`;
       const bodyAttachments = attachments?.map((a) => ({

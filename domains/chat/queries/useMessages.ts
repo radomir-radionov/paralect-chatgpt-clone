@@ -37,8 +37,15 @@ export const messagesInfiniteQueryOptions = (roomId: string) =>
     retry: chatFetchRetry,
   });
 
-export function useMessages(roomId: string) {
-  const query = useInfiniteQuery(messagesInfiniteQueryOptions(roomId));
+export function useMessages(
+  roomId: string,
+  options?: { readonly enabled?: boolean },
+) {
+  const base = messagesInfiniteQueryOptions(roomId);
+  const query = useInfiniteQuery({
+    ...base,
+    enabled: options?.enabled === false ? false : base.enabled,
+  });
 
   // Pages are fetched newest-first (DESC by created_at). Page 0 contains the
   // most recent messages; subsequent pages contain progressively older ones.

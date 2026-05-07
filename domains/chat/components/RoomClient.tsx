@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ArrowDownIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { useIsMutating } from "@tanstack/react-query";
+
 import { Button } from "@shared/components/ui/button";
 import {
   Empty,
@@ -89,6 +91,18 @@ export function RoomClient({
   roomId: string;
   userId: string;
 }) {
+  const sendMessageMutationsForRoom = useIsMutating({
+    predicate: (mutation) => {
+      const key = mutation.options.mutationKey;
+      if (!Array.isArray(key)) return false;
+      if (key[0] !== "chat" || key[1] !== "messages" || key[2] !== "stream") return false;
+
+      const variables = mutation.state.variables as unknown;
+      if (variables == null || typeof variables !== "object") return false;
+      return (variables as { roomId?: unknown }).roomId === roomId;
+    },
+  });
+
   const roomQuery = useRoom(roomId, userId);
   const profileQuery = useProfile(userId);
   const updateRoomModelMutation = useUpdateRoomModel(userId);
@@ -103,7 +117,12 @@ export function RoomClient({
     error,
     status,
     refetch: refetchMessages,
-  } = useMessages(roomId);
+  } = useMessages(roomId, {
+    // While the initial `POST /messages/stream` is in flight (e.g. first message
+    // started from `/`), the DB may still be empty. Avoid a premature fetch
+    // overwriting optimistic cache bubbles (including the assistant "Thinking…").
+    enabled: sendMessageMutationsForRoom === 0,
+  });
 
   const {
     scrollContainerRef,
@@ -116,9 +135,14 @@ export function RoomClient({
   } = useChatScroll(messages.length);
 
   useEffect(() => {
+    // Prevent racing the initial `user_and_assistant` stream (e.g. first message started
+    // from `NewRoomComposer`) with an `assistant_only` regeneration.
+    if (sendMessageMutationsForRoom > 0) return;
+
     const last = messages[messages.length - 1];
     if (!last) return;
     if (last.role !== "user") return;
+    if (last.status === "pending" || last.status === "error") return;
     if (streamAssistantReply.isPending) return;
 
     if (streamedForUserMessageIdsRef.current.has(last.id)) return;
@@ -136,7 +160,7 @@ export function RoomClient({
         toast.error(result.message);
       }
     })();
-  }, [messages, roomId, streamAssistantReply]);
+  }, [messages, roomId, sendMessageMutationsForRoom, streamAssistantReply]);
 
   useEffect(() => {
     if (isFetchingNextPage) {
@@ -209,6 +233,10 @@ export function RoomClient({
     status === "pending" && messages.length === 0 && error == null;
   const showMessagesEmpty =
     status === "success" && messages.length === 0 && error == null;
+
+  const shouldRenderThinkingPlaceholder =
+    sendMessageMutationsForRoom > 0 &&
+    !messages.some((m) => m.role === "assistant" && m.status === "pending");
 
   return (
     <div className="flex h-full flex-col">
@@ -299,6 +327,21 @@ export function RoomClient({
                 isGrouped={isGrouped(message, messages[index - 1])}
               />
             ))}
+
+            {shouldRenderThinkingPlaceholder ? (
+              <ChatMessage
+                key="__thinking__"
+                roomId={roomId}
+                id="__thinking__"
+                text=""
+                created_at={messages[messages.length - 1]?.created_at ?? new Date().toISOString()}
+                author_id={null}
+                role="assistant"
+                author={{ name: "Assistant", image_url: null }}
+                isOwn={false}
+                status="pending"
+              />
+            ) : null}
 
             <div ref={messagesEndRef} />
           </div>

@@ -1,8 +1,8 @@
 "use client";
 
-import { LoaderCircleIcon } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Skeleton } from "@shared/components/ui/skeleton";
@@ -10,141 +10,239 @@ import {
   DEFAULT_AI_MODEL_SLUG,
   type AiModelSlug,
 } from "@shared/lib/ai/model-registry";
-import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
 
 import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
+import { uploadChatAttachment } from "@domains/chat/api/uploadChatAttachment";
 import { AiModelSelect } from "@domains/chat/components/AiModelSelect";
 import { ChatHeader } from "@domains/chat/components/ChatHeader";
-import { ChatComposerInput } from "@domains/chat/components/ChatComposerInput";
-import { ChatMessage } from "@domains/chat/components/ChatMessage";
-import { useStartRoomWithFirstMessage } from "@domains/chat/mutations/useStartRoomWithFirstMessage";
+import {
+  ChatComposerInput,
+  type ComposerPendingDocument,
+  type ComposerPendingImage,
+} from "@domains/chat/components/ChatComposerInput";
+import { useSendMessage } from "@domains/chat/mutations/useSendMessage";
+import {
+  clientCreateRoom,
+  clientDeleteRoom,
+} from "@domains/chat/queries/clientChatFetchers";
+import { chatKeys } from "@domains/chat/queries/keys";
+import type { RoomDetails, RoomListItem } from "@domains/chat/queries/room-fetchers";
 
-type OptimisticBubble = {
-  id: string;
-  text: string;
-  createdAt: string;
-};
+const MAX_NAME_LEN = 60;
+
+function deriveRoomNameFromText(text: string): string {
+  const normalized = text.replaceAll(/\s+/g, " ").trim();
+  if (normalized.length === 0) return "AI Chat";
+  if (normalized.length <= MAX_NAME_LEN) return normalized;
+  return `${normalized.slice(0, MAX_NAME_LEN).trimEnd()}…`;
+}
 
 export function NewRoomComposer() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, isLoading: sessionLoading } = useCurrentUser();
-  const mutation = useStartRoomWithFirstMessage(user?.id ?? null);
+  const sendMessage = useSendMessage();
 
-  const [modelSlug, setModelSlug] = useState<AiModelSlug>(
-    DEFAULT_AI_MODEL_SLUG,
-  );
-  const [optimistic, setOptimistic] = useState<OptimisticBubble | null>(null);
+  const [modelSlug, setModelSlug] = useState<AiModelSlug>(DEFAULT_AI_MODEL_SLUG);
+  const [isStartingChat, setIsStartingChat] = useState(false);
 
   async function handleSubmit(payload: {
     readonly text: string;
-    readonly pendingImages: Array<{ id: string; file: File; previewUrl: string }>;
-    readonly pendingDocuments: Array<{ id: string; file: File }>;
+    readonly pendingImages: ComposerPendingImage[];
+    readonly pendingDocuments: ComposerPendingDocument[];
     readonly createdAt: string;
   }) {
     const text = payload.text.trim();
     const hasImages = payload.pendingImages.length > 0;
     const hasDocuments = payload.pendingDocuments.length > 0;
 
-    if ((hasImages || hasDocuments) && !user?.id) {
-      toast.error("You must be signed in to upload files");
+    if (!user?.id) {
+      toast.error("You must be signed in to start a chat");
       return;
     }
 
-    const messageId = crypto.randomUUID();
-    setOptimistic({ id: messageId, text, createdAt: payload.createdAt });
+    if (!text && !hasImages && !hasDocuments) return;
 
-    const previewUrlsToRevoke = payload.pendingImages.map((img) => img.previewUrl);
+    const derivedName = deriveRoomNameFromText(
+      text || (hasDocuments ? "Document" : "Image"),
+    );
 
-    try {
-      let attachments:
-        | Array<{
-            id: string;
-            kind: "image" | "document";
-            storagePath: string;
-            mimeType: string;
-            sizeBytes: number;
-            width?: number;
-            height?: number;
-            originalName?: string;
-          }>
-        | undefined;
+    setIsStartingChat(true);
 
-      if (hasImages || hasDocuments) {
-        const uploaded: NonNullable<typeof attachments> = [];
+    const createResult = await clientCreateRoom({
+      name: derivedName,
+      modelSlug,
+    });
 
-        for (const img of payload.pendingImages) {
-          const attachmentId = crypto.randomUUID();
-          try {
-            const path = await uploadChatAttachment({
-              file: img.file,
-              kind: "image",
-              attachmentId,
-              messageId,
-            });
-
-            uploaded.push({
-              id: attachmentId,
-              kind: "image",
-              storagePath: path,
-              mimeType: img.file.type || "application/octet-stream",
-              sizeBytes: img.file.size,
-            });
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to upload image");
-            return;
-          }
-        }
-
-        for (const doc of payload.pendingDocuments) {
-          const attachmentId = crypto.randomUUID();
-          try {
-            const path = await uploadChatAttachment({
-              file: doc.file,
-              kind: "document",
-              attachmentId,
-              messageId,
-              originalName: doc.file.name,
-            });
-
-            uploaded.push({
-              id: attachmentId,
-              kind: "document",
-              storagePath: path,
-              mimeType: doc.file.type || "application/octet-stream",
-              sizeBytes: doc.file.size,
-              originalName: doc.file.name,
-            });
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to upload document");
-            return;
-          }
-        }
-
-        attachments = uploaded;
-      }
-
-      const result = await mutation.mutateAsync({
-        messageId,
-        text,
-        modelSlug,
-        attachments,
-      });
-
-      if (result.error) {
-        toast.error(result.message);
-        if (result.roomId) {
-          router.push(`/rooms/${result.roomId}`);
-        }
-        return;
-      }
-
-      router.push(`/rooms/${result.roomId}`);
-    } finally {
-      previewUrlsToRevoke.forEach((url) => URL.revokeObjectURL(url));
+    if (createResult.error) {
+      toast.error(createResult.message);
+      setIsStartingChat(false);
+      return;
     }
-  }
 
-  const isCreating = useMemo(() => optimistic != null, [optimistic]);
+    const roomId = createResult.roomId;
+    const messageId = crypto.randomUUID();
+    const assistantId = crypto.randomUUID();
+
+    const roomStub: RoomDetails = {
+      id: roomId,
+      name: derivedName,
+      modelSlug,
+      lastMessageAt: null,
+    };
+    queryClient.setQueryData(chatKeys.room(roomId), roomStub);
+
+    queryClient.setQueryData<RoomListItem[] | undefined>(
+      chatKeys.joinedRooms(user.id),
+      (current) => {
+        const next: RoomListItem = {
+          id: roomId,
+          name: derivedName,
+          modelSlug,
+          lastMessageAt: payload.createdAt,
+        };
+        if (!current) return [next];
+        return [next, ...current.filter((r) => r.id !== roomId)];
+      },
+    );
+
+    const author = {
+      id: user.id,
+      name:
+        typeof user.user_metadata?.name === "string"
+          ? user.user_metadata.name
+          : "You",
+      image_url:
+        typeof user.user_metadata?.avatar_url === "string"
+          ? user.user_metadata.avatar_url
+          : null,
+    };
+
+    const imageAttachmentIds = payload.pendingImages.map(() => crypto.randomUUID());
+    const documentAttachmentIds = payload.pendingDocuments.map(() => crypto.randomUUID());
+
+    let attachments:
+      | Array<
+          | {
+              id: string;
+              kind: "image";
+              mime_type: string;
+              size_bytes: number;
+              width: number | null;
+              height: number | null;
+              storagePath: string;
+              preview_url?: string;
+              original_name?: string;
+            }
+          | {
+              id: string;
+              kind: "document";
+              mime_type: string;
+              size_bytes: number;
+              width: null;
+              height: null;
+              storagePath: string;
+              original_name: string;
+            }
+        >
+      | undefined;
+
+    if (hasImages || hasDocuments) {
+      const uploaded: NonNullable<typeof attachments> = [];
+
+      for (const [index, img] of payload.pendingImages.entries()) {
+        const attachmentId = imageAttachmentIds[index] ?? crypto.randomUUID();
+        try {
+          const path = await uploadChatAttachment({
+            file: img.file,
+            kind: "image",
+            attachmentId,
+            messageId,
+            roomId,
+          });
+          uploaded.push({
+            id: attachmentId,
+            kind: "image",
+            mime_type: img.file.type || "application/octet-stream",
+            size_bytes: img.file.size,
+            width: null,
+            height: null,
+            storagePath: path,
+            preview_url: img.previewUrl,
+          });
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to upload image");
+          payload.pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
+          await clientDeleteRoom(roomId);
+          setIsStartingChat(false);
+          return;
+        }
+      }
+
+      for (const [index, doc] of payload.pendingDocuments.entries()) {
+        const attachmentId = documentAttachmentIds[index] ?? crypto.randomUUID();
+        try {
+          const path = await uploadChatAttachment({
+            file: doc.file,
+            kind: "document",
+            attachmentId,
+            messageId,
+            roomId,
+            originalName: doc.file.name,
+          });
+          uploaded.push({
+            id: attachmentId,
+            kind: "document",
+            mime_type: doc.file.type || "application/octet-stream",
+            size_bytes: doc.file.size,
+            width: null,
+            height: null,
+            storagePath: path,
+            original_name: doc.file.name,
+          });
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to upload document");
+          payload.pendingImages.forEach((i) => URL.revokeObjectURL(i.previewUrl));
+          await clientDeleteRoom(roomId);
+          setIsStartingChat(false);
+          return;
+        }
+      }
+
+      attachments = uploaded;
+    }
+
+    const previewUrls = payload.pendingImages.map((i) => i.previewUrl);
+
+    sendMessage.mutate(
+      {
+        id: messageId,
+        assistantId,
+        text,
+        attachments,
+        roomId,
+        createdAt: payload.createdAt,
+        author,
+      },
+      {
+        onSuccess: (result) => {
+          if (result.error) {
+            toast.error(result.message);
+          }
+        },
+        onSettled: () => {
+          if (previewUrls.length > 0) {
+            window.setTimeout(() => {
+              previewUrls.forEach((u) => URL.revokeObjectURL(u));
+            }, 60_000);
+          }
+        },
+      },
+    );
+
+    setIsStartingChat(false);
+    router.push(`/rooms/${roomId}`);
+  }
 
   if (sessionLoading && user == null) {
     return (
@@ -173,61 +271,22 @@ export function NewRoomComposer() {
           <AiModelSelect
             value={modelSlug}
             onChange={setModelSlug}
-            disabled={mutation.isPending || isCreating}
             className="w-full max-w-[min(220px,55vw)] sm:w-[220px] sm:max-w-none"
           />
         }
       />
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {optimistic ? (
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="py-2">
-                <ChatMessage
-                  id={optimistic.id}
-                  text={optimistic.text}
-                  created_at={optimistic.createdAt}
-                  author_id={user?.id ?? "pending-user"}
-                  role="user"
-                  author={{ name: "You", image_url: null }}
-                  isOwn
-                  status="pending"
-                />
-                <ChatMessage
-                  id="optimistic-assistant"
-                  text="Thinking…"
-                  created_at={optimistic.createdAt}
-                  author_id={null}
-                  role="assistant"
-                  author={{ name: "Assistant", image_url: null }}
-                  isOwn={false}
-                  status="pending"
-                />
-              </div>
-            </div>
-
-            <div className="px-0 py-3 border-t shrink-0">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <LoaderCircleIcon className="size-3.5 animate-spin" />
-                Creating chat…
-              </div>
-            </div>
+        <div className="flex min-h-0 flex-1 flex-col justify-end pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:justify-center sm:pb-6">
+          <div className="mx-auto w-full min-w-0 max-w-[800px] px-0 sm:px-0">
+            <ChatComposerInput
+              innerClassName="mx-auto max-w-[800px]"
+              disabled={isStartingChat || sendMessage.isPending}
+              isSending={isStartingChat || sendMessage.isPending}
+              onSubmit={(p) => void handleSubmit(p)}
+            />
           </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col justify-end pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 sm:justify-center sm:pb-6">
-            <div className="mx-auto w-full min-w-0 max-w-[800px] px-0 sm:px-0">
-              <ChatComposerInput
-                disabled={mutation.isPending}
-                isSending={mutation.isPending}
-                innerClassName="max-w-[800px]"
-                onSubmit={({ text, pendingImages, pendingDocuments, createdAt }) =>
-                  handleSubmit({ text, pendingImages, pendingDocuments, createdAt })
-                }
-              />
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

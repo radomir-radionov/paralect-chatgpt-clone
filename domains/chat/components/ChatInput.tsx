@@ -18,16 +18,18 @@ type Props = {
     name: string;
     image_url: string | null;
   };
+  /** When `true` the composer is locked (e.g. while another send is in flight). */
+  disabled?: boolean;
 };
 
-export function ChatInput({ roomId, author }: Props) {
+export function ChatInput({ roomId, author, disabled = false }: Props) {
   const sendMessage = useSendMessage();
   const queryClient = useQueryClient();
 
   return (
     <ChatComposerInput
-      innerClassName="max-w-[800px]"
-      disabled={sendMessage.isPending}
+      innerClassName="mx-auto max-w-[800px]"
+      disabled={disabled || sendMessage.isPending}
       isSending={sendMessage.isPending}
       onSubmit={async ({ text, pendingImages, pendingDocuments, createdAt }) => {
         const id = crypto.randomUUID();

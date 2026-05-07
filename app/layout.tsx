@@ -36,7 +36,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <QueryProvider>
-          <div className="mx-auto w-full max-w-[1440px] min-h-dvh bg-background">
+          <div className="mx-auto w-full max-w-[1920px] min-h-dvh bg-background">
             {children}
           </div>
           <Toaster />

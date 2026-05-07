@@ -203,14 +203,14 @@ export function ChatMessage({
         isGrouped ? "pt-0.5" : "pt-3",
       )}
     >
-      {!isGrouped && (
-        <div className="flex items-baseline gap-1.5 mb-1 pl-0.5">
-          <span className="text-xs font-semibold">{author.name}</span>
+      <div className={cn("flex items-baseline gap-1.5 pl-0.5", isGrouped ? "mb-0.5" : "mb-1")}>
+        <span className="text-xs font-semibold">{author.name}</span>
+        {!isGrouped && (
           <span className="text-xs text-muted-foreground">
             {DATE_FORMATTER.format(new Date(created_at))}
           </span>
-        </div>
-      )}
+        )}
+      </div>
       <div
         className={cn(
           "max-w-[min(36rem,88%)] sm:max-w-[70%] rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm",
