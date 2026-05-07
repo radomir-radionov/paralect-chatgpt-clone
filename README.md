@@ -2,6 +2,8 @@
 
 Next.js (App Router) + TypeScript app with Supabase Auth and an AI chat experience (streaming, threads, attachments).
 
+task link: https://www.paralect.com/academy/product-engineer/projects/chatbot
+
 ## Prerequisites
 
 - Node.js **20+** (recommended)
