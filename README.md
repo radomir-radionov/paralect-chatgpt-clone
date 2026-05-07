@@ -41,7 +41,7 @@ You need a Supabase project with:
 
 Apply migrations to your Supabase project **in timestamp order**. Either:
 
-- **Supabase CLI (linked project):** from the `paralect` directory, `npm run db:push`, or  
+- **Supabase CLI (linked project):** from the `paralect` directory, `npm run db:push`, or
 - **Dashboard:** SQL Editor — paste and run each file in order.
 
 #### Supabase CLI linking (required for `npm run db:push` / `npm run db:types`)

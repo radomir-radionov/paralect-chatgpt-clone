@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { QueryProvider } from "@shared/lib/query/QueryProvider";
 import { Toaster } from "@shared/components/ui/sonner";
-import { CursorProbe } from "@shared/components/debug/CursorProbe";
 
 import "./globals.css";
 
@@ -36,7 +35,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <CursorProbe />
         <QueryProvider>
           <div className="mx-auto w-full max-w-[1440px] min-h-dvh bg-background">
             {children}
