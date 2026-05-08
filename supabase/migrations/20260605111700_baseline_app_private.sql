@@ -5,7 +5,6 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
 
 CREATE SCHEMA IF NOT EXISTS app_private;
 
-GRANT USAGE ON SCHEMA app_private TO postgres;
 GRANT USAGE ON SCHEMA app_private TO service_role;
 REVOKE ALL ON SCHEMA app_private FROM PUBLIC, anon, authenticated;
 
@@ -16,8 +15,6 @@ CREATE TABLE IF NOT EXISTS "app_private"."user_profile" (
   "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
-ALTER TABLE "app_private"."user_profile" OWNER TO "postgres";
-
 ALTER TABLE ONLY "app_private"."user_profile"
   ADD CONSTRAINT "user_profile_pkey" PRIMARY KEY ("id");
 
@@ -27,14 +24,11 @@ ALTER TABLE ONLY "app_private"."user_profile"
 CREATE TABLE IF NOT EXISTS "app_private"."chat_room" (
   "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
   "name" "text" NOT NULL,
-  "is_public" boolean NOT NULL,
   "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
   "owner_id" "uuid" NOT NULL,
   "model_slug" "text" DEFAULT 'openai:gpt-5-mini'::"text" NOT NULL,
   "last_message_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
-
-ALTER TABLE "app_private"."chat_room" OWNER TO "postgres";
 
 ALTER TABLE ONLY "app_private"."chat_room"
   ADD CONSTRAINT "chat_room_pkey" PRIMARY KEY ("id");
@@ -56,8 +50,6 @@ CREATE TABLE IF NOT EXISTS "app_private"."message" (
   CONSTRAINT "message_author_id_role_check" CHECK (((("role" = 'user'::"text") AND ("author_id" IS NOT NULL)) OR ("role" = 'assistant'::"text"))),
   CONSTRAINT "message_role_check" CHECK (("role" = ANY (ARRAY['user'::"text", 'assistant'::"text"])))
 );
-
-ALTER TABLE "app_private"."message" OWNER TO "postgres";
 
 ALTER TABLE ONLY "app_private"."message"
   ADD CONSTRAINT "message_pkey" PRIMARY KEY ("id");
@@ -91,8 +83,6 @@ CREATE TABLE IF NOT EXISTS "app_private"."message_attachment" (
   CONSTRAINT "message_attachment_kind_check" CHECK (("kind" = ANY (ARRAY['image'::"text", 'document'::"text"])))
 );
 
-ALTER TABLE "app_private"."message_attachment" OWNER TO "postgres";
-
 ALTER TABLE ONLY "app_private"."message_attachment"
   ADD CONSTRAINT "message_attachment_pkey" PRIMARY KEY ("id");
 
@@ -122,14 +112,10 @@ REVOKE ALL ON TABLE app_private.chat_room FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE app_private.message FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE app_private.message_attachment FROM PUBLIC, anon, authenticated;
 
-GRANT ALL ON TABLE app_private.user_profile TO postgres, service_role;
-GRANT ALL ON TABLE app_private.chat_room TO postgres, service_role;
-GRANT ALL ON TABLE app_private.message TO postgres, service_role;
-GRANT ALL ON TABLE app_private.message_attachment TO postgres, service_role;
-
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app_private REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app_private REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app_private REVOKE ALL ON FUNCTIONS FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE app_private.user_profile TO service_role;
+GRANT ALL ON TABLE app_private.chat_room TO service_role;
+GRANT ALL ON TABLE app_private.message TO service_role;
+GRANT ALL ON TABLE app_private.message_attachment TO service_role;
 
 CREATE OR REPLACE FUNCTION app_private.handle_new_auth_user_create_profile()
   RETURNS trigger
@@ -166,8 +152,6 @@ begin
   return new;
 end;
 $_$;
-
-ALTER FUNCTION app_private.handle_new_auth_user_create_profile() OWNER TO postgres;
 
 REVOKE ALL ON FUNCTION app_private.handle_new_auth_user_create_profile() FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_private.handle_new_auth_user_create_profile() FROM anon, authenticated;
