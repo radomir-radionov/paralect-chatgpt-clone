@@ -83,7 +83,6 @@ export async function createRoomMutation(
     .from("chat_room")
     .insert({
       name: data.name,
-      is_public: false,
       owner_id: user.id,
       model_slug: data.modelSlug,
     })

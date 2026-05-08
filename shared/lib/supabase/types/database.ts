@@ -16,7 +16,6 @@ export type Database = {
         Row: {
           created_at: string;
           id: string;
-          is_public: boolean;
           last_message_at: string;
           model_slug: string;
           name: string;
@@ -25,7 +24,6 @@ export type Database = {
         Insert: {
           created_at?: string;
           id?: string;
-          is_public: boolean;
           last_message_at?: string;
           model_slug?: string;
           name: string;
@@ -34,7 +32,6 @@ export type Database = {
         Update: {
           created_at?: string;
           id?: string;
-          is_public?: boolean;
           last_message_at?: string;
           model_slug?: string;
           name?: string;
