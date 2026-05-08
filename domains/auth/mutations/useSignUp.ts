@@ -14,11 +14,11 @@ export function useSignUp() {
   const queryClient = useQueryClient();
 
   return useMutation<SignUpResult, Error, SignUpInput>({
-    mutationFn: async ({ email, password, emailRedirectTo }) => {
+    mutationFn: async ({ email, password }) => {
       const res = await fetch("/api/auth/sign-up", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, emailRedirectTo }),
+        body: JSON.stringify({ email, password }),
       });
       let json: unknown = null;
       try {

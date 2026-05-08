@@ -9,23 +9,23 @@ import { readJson } from "@shared/lib/http/readJson";
 import {
   consumeGuestQuestion,
   GUEST_QUOTA_COOKIE_NAME,
-} from "@domains/chat/lib/guestQuota";
-import { getGuestQuotaSecret, setGuestQuotaCookie } from "@domains/chat/lib/guestQuotaServer";
+} from "@domains/chat/guest/lib/guestQuota";
+import { getGuestQuotaSecret, setGuestQuotaCookie } from "@domains/chat/guest/lib/guestQuotaServer";
 import {
   buildDocumentContextBlock,
   parseChatDocument,
-} from "@domains/chat/lib/unstructuredDocuments";
+} from "@domains/chat/attachments/lib/unstructuredDocuments";
 import {
   CHAT_DOCUMENTS_MAX_ATTACHMENTS,
   CHAT_DOCUMENTS_MAX_BYTES,
   fileExtensionForDocument,
-} from "@domains/chat/lib/chatDocuments";
+} from "@domains/chat/attachments/lib/chatDocuments";
 import {
   CHAT_IMAGES_MAX_ATTACHMENTS,
   CHAT_IMAGES_MAX_BYTES,
-} from "@domains/chat/lib/chatImages";
+} from "@domains/chat/attachments/lib/chatImages";
 import { STREAMING_TEXT_HEADERS } from "@shared/lib/http/streamingTextHeaders";
-import { parseGuestMessagesForStream } from "@domains/chat/lib/guestStreamPayload";
+import { parseGuestMessagesForStream } from "@domains/chat/guest/lib/guestStreamPayload";
 
 export const runtime = "nodejs";
 

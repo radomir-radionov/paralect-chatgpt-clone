@@ -1,7 +1,7 @@
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
-import { fetchJoinedRooms } from "@domains/chat/queries/room-fetchers";
+import { fetchJoinedRooms } from "@domains/chat/room/queries/room-fetchers";
 
 export const runtime = "nodejs";
 

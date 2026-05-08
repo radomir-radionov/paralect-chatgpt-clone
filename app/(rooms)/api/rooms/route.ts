@@ -1,4 +1,4 @@
-import { createRoomMutation } from "@domains/chat/services/roomMutations";
+import { createRoomMutation } from "@domains/chat/room/services/roomMutations";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { readJson } from "@shared/lib/http/readJson";
 

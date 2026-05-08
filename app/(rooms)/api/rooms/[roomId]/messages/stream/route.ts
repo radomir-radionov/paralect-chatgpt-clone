@@ -9,12 +9,12 @@ import {
   normalizeStreamIncomingAttachments,
   parseStreamIncomingDocuments,
   verifyStreamIncomingImageObjects,
-} from "@domains/chat/lib/streamIncomingAttachments";
-import { historyRowsToModelMessages } from "@domains/chat/lib/streamModelMessages";
+} from "@domains/chat/streaming/lib/streamIncomingAttachments";
+import { historyRowsToModelMessages } from "@domains/chat/streaming/lib/streamModelMessages";
 import type {
   ParsedStreamIncomingDocument,
   StreamIncomingAttachment,
-} from "@domains/chat/lib/streamTypes";
+} from "@domains/chat/streaming/lib/streamTypes";
 import {
   buildStreamAttachmentInsertRows,
   fetchStreamMessageAttachments,
@@ -26,7 +26,7 @@ import {
   selectStreamUserMessageForRegenerate,
   updateChatRoomLastMessageAt,
   upsertStreamAssistantErrorMessage,
-} from "@domains/chat/queries/messageStreamRepository";
+} from "@domains/chat/streaming/server/messageStreamRepository";
 
 export const runtime = "nodejs";
 

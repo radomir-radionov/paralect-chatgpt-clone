@@ -2,19 +2,13 @@
 
 import { useMutation } from "@tanstack/react-query";
 
-type SignInWithGoogleInput = {
-  redirectTo?: string;
-};
-
 export function useSignInWithGoogle() {
   return useMutation({
-    mutationFn: async ({ redirectTo }: SignInWithGoogleInput = {}) => {
+    mutationFn: async () => {
       const res = await fetch("/api/auth/sign-in-google", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          redirectTo: redirectTo ?? `${window.location.origin}/`,
-        }),
+        body: JSON.stringify({}),
       });
       let json: unknown = null;
       try {
