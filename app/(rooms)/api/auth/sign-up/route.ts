@@ -1,4 +1,5 @@
 import { signUpSchema } from "@domains/auth/schemas/auth";
+import { signUpWelcomeRedirectUrl } from "@shared/lib/http/appOrigin";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { readJson } from "@shared/lib/http/readJson";
 import { withSupabaseAuthServerClient } from "@shared/lib/supabase/withSupabaseServerClient";
@@ -17,13 +18,14 @@ export async function POST(req: Request) {
       400,
     );
   }
-  const { email, password, emailRedirectTo } = parsed.data;
+  const { email, password } = parsed.data;
+  const emailRedirectTo = signUpWelcomeRedirectUrl(req);
 
   return withSupabaseAuthServerClient(async (supabase) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: emailRedirectTo ? { emailRedirectTo } : undefined,
+      options: { emailRedirectTo },
     });
 
     if (error) {

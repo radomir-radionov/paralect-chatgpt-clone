@@ -24,9 +24,7 @@ export default function GoogleLoginForm({
   const signInWithGoogle = useSignInWithGoogle();
 
   function handleGoogleLogin() {
-    signInWithGoogle.mutate({
-      redirectTo: `${window.location.origin}/`,
-    });
+    signInWithGoogle.mutate();
   }
 
   const googleButton = (

@@ -3,8 +3,8 @@ import { cookies } from "next/headers";
 import {
   GUEST_QUOTA_COOKIE_NAME,
   readGuestQuotaCookie,
-} from "@domains/chat/lib/guestQuota";
-import { getGuestQuotaSecret } from "@domains/chat/lib/guestQuotaServer";
+} from "@domains/chat/guest/lib/guestQuota";
+import { getGuestQuotaSecret } from "@domains/chat/guest/lib/guestQuotaServer";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 
 export const runtime = "nodejs";

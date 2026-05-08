@@ -4,15 +4,15 @@ import { dehydrate } from "@tanstack/react-query";
 import { getMe } from "@domains/auth/api/getMe";
 import { getMyProfile } from "@domains/auth/api/getMyProfile";
 import { authKeys } from "@domains/auth/queries/keys";
-import { getMessagesPage } from "@domains/chat/api/getMessagesPage";
-import { getRoom } from "@domains/chat/api/getRoom";
-import { RoomClient } from "@domains/chat/components/RoomClient";
-import { chatKeys } from "@domains/chat/queries/keys";
+import { getMessagesPage } from "@domains/chat/room/api/getMessagesPage";
+import { getRoom } from "@domains/chat/room/api/getRoom";
+import { RoomClient } from "@domains/chat/room/components/RoomClient";
+import { chatKeys } from "@domains/chat/room/queries/keys";
 import {
   getNextPageParamForMessages,
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
-} from "@domains/chat/queries/message-pagination";
+} from "@domains/chat/room/queries/message-pagination";
 import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
 import { getQueryClient } from "@shared/lib/query/getQueryClient";
 import { HydrateClient } from "@shared/lib/query/HydrateClient";

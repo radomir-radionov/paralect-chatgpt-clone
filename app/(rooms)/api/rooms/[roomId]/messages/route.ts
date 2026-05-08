@@ -1,5 +1,5 @@
-import { fetchMessagesPage } from "@domains/chat/queries/message-fetchers";
-import { fetchRoom } from "@domains/chat/queries/room-fetchers";
+import { fetchMessagesPage } from "@domains/chat/room/queries/message-fetchers";
+import { fetchRoom } from "@domains/chat/room/queries/room-fetchers";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";

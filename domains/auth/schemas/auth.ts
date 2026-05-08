@@ -5,7 +5,6 @@ export const signUpSchema = z.object({
   password: z
     .string()
     .min(6, { error: "Password must be at least 6 characters" }),
-  emailRedirectTo: z.url().optional(),
 });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;
@@ -17,8 +16,7 @@ export const signInWithPasswordSchema = z.object({
 
 export type SignInWithPasswordInput = z.infer<typeof signInWithPasswordSchema>;
 
-export const signInWithGoogleSchema = z.object({
-  redirectTo: z.url({ error: "redirectTo must be a valid URL" }),
-});
+/** Body must be `{}`; redirect URL is resolved on the server. */
+export const signInWithGoogleSchema = z.object({}).strict();
 
 export type SignInWithGoogleInput = z.infer<typeof signInWithGoogleSchema>;

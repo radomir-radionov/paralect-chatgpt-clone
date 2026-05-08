@@ -24,10 +24,13 @@ export function SignOutButton({
       type="button"
       {...props}
       disabled={props.disabled ?? signOut.isPending}
-      onClick={async () => {
-        await signOut.mutateAsync();
-        router.push("/");
-        router.refresh();
+      onClick={() => {
+        signOut.mutate(undefined, {
+          onSuccess: () => {
+            router.push("/");
+            router.refresh();
+          },
+        });
       }}
     >
       {children}

@@ -1,8 +1,8 @@
-import { fetchRoom } from "@domains/chat/queries/room-fetchers";
+import { fetchRoom } from "@domains/chat/room/queries/room-fetchers";
 import {
   deleteRoomMutation,
   updateRoomModelMutation,
-} from "@domains/chat/services/roomMutations";
+} from "@domains/chat/room/services/roomMutations";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { readJson } from "@shared/lib/http/readJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";

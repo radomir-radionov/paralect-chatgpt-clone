@@ -36,6 +36,10 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Architecture
+
+- **Chat** uses a domain-first layout (`domains/chat/`): capability folders (`attachments`, `guest`, `streaming`), shared `types/`, and signed-in surface under `room/` (`room/components`, `room/queries`, …). Conventions are documented in [`domains/chat/README.md`](domains/chat/README.md).
+
 ## Notes
 
 - If `npm run db:push` fails, try disabling VPN/Tailscale or apply migrations in **Supabase Dashboard → SQL Editor**.

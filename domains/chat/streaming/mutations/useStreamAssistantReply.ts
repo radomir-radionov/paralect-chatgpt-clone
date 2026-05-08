@@ -1,0 +1,287 @@
+"use client";
+
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+import {
+  appendOptimisticMessage,
+  applyMessageStatus,
+  replaceMessage,
+} from "@domains/chat/room/queries/messagesCache";
+import { broadcastChatInvalidation } from "@shared/lib/query/chatCrossTabSync";
+import { readTextStream } from "@domains/chat/streaming/lib/readTextStream";
+import type { AiModelSlug } from "@shared/lib/ai/model-registry";
+
+const CHAT_PACING_ENABLED = process.env.NEXT_PUBLIC_CHAT_PACING !== "0";
+
+type PaceOptions = Readonly<{
+  minDurationMs: number;
+  baselineCharsPerSec: number;
+  maxDurationMs: number;
+}>;
+
+async function paceAssistantReveal(options: {
+  readonly roomId: string;
+  readonly assistantId: string;
+  readonly createdAt: string;
+  readonly queryClient: ReturnType<typeof useQueryClient>;
+  readonly getReceivedText: () => string;
+  readonly streamDone: () => boolean;
+  readonly pacing: PaceOptions;
+}): Promise<void> {
+  const startedAt = performance.now();
+  const { pacing } = options;
+
+  let renderedText = "";
+  let rafId: number | null = null;
+  let resolvePromise: (() => void) | null = null;
+
+  let lastFrameAt = startedAt;
+  let desiredDoneAt: number | null = null;
+  let finalTotalChars: number | null = null;
+
+  const applyRendered = (text: string) => {
+    replaceMessage(options.queryClient, options.roomId, {
+      id: options.assistantId,
+      text,
+      created_at: options.createdAt,
+      author_id: null,
+      role: "assistant",
+      author: { name: "Assistant", image_url: null },
+      status: "pending",
+    });
+  };
+
+  const scheduleNext = () => {
+    if (rafId != null) return;
+    rafId = requestAnimationFrame(step);
+  };
+
+  const step = () => {
+    rafId = null;
+
+    const now = performance.now();
+    const dtMs = Math.max(0, now - lastFrameAt);
+    lastFrameAt = now;
+
+    const receivedText = options.getReceivedText();
+
+    if (options.streamDone() && desiredDoneAt == null) {
+      finalTotalChars = receivedText.length;
+      const baselineMs = (finalTotalChars / pacing.baselineCharsPerSec) * 1000;
+      const durationMs = Math.min(
+        pacing.maxDurationMs,
+        Math.max(pacing.minDurationMs, baselineMs),
+      );
+      desiredDoneAt = startedAt + durationMs;
+    }
+
+    const remainingChars = receivedText.length - renderedText.length;
+    if (remainingChars > 0) {
+      let charsToReveal = 0;
+
+      if (desiredDoneAt != null && finalTotalChars != null) {
+        const remainingTimeMs = Math.max(1, desiredDoneAt - now);
+        const rateCharsPerMs = remainingChars / remainingTimeMs;
+        charsToReveal = Math.ceil(rateCharsPerMs * dtMs);
+      } else {
+        const rateCharsPerMs = options.pacing.baselineCharsPerSec / 1000;
+        charsToReveal = Math.ceil(rateCharsPerMs * dtMs);
+      }
+
+      charsToReveal = Math.max(1, Math.min(remainingChars, charsToReveal));
+      renderedText = receivedText.slice(0, renderedText.length + charsToReveal);
+      applyRendered(renderedText);
+    }
+
+    const done =
+      options.streamDone() &&
+      renderedText.length === options.getReceivedText().length &&
+      (desiredDoneAt == null || now >= desiredDoneAt);
+
+    if (done) {
+      resolvePromise?.();
+      resolvePromise = null;
+      return;
+    }
+
+    scheduleNext();
+  };
+
+  scheduleNext();
+
+  await new Promise<void>((resolve, reject) => {
+    resolvePromise = resolve;
+    void reject;
+  }).finally(() => {
+    if (rafId != null) cancelAnimationFrame(rafId);
+    rafId = null;
+    resolvePromise = null;
+  });
+}
+
+type Input = {
+  roomId: string;
+  userMessageId: string;
+  assistantId: string;
+  createdAt: string;
+  modelSlug?: AiModelSlug;
+};
+
+type Result =
+  | { error: false }
+  | { error: true; message: string };
+
+function extractStreamedProviderError(text: string): string | null {
+  const match = text.match(/\[(OpenAI|Gemini|Groq) request failed:\s*([^\]]+)\]/);
+  if (!match) return null;
+
+  const raw = match[2]?.trim();
+  if (!raw) return "AI request failed";
+
+  if (raw.includes("insufficient_quota")) {
+    return "AI provider quota exceeded. Check your API billing/plan or switch to a different provider/model.";
+  }
+
+  return raw;
+}
+
+export function useStreamAssistantReply() {
+  const queryClient = useQueryClient();
+
+  return useMutation<Result, Error, Input>({
+    mutationFn: async ({ roomId, userMessageId, assistantId, createdAt, modelSlug }) => {
+      let response: Response;
+      try {
+        response = await fetch(`/api/rooms/${roomId}/messages/stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "assistant_only",
+            userMessageId,
+            assistantId,
+            modelSlug,
+          }),
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch (network error)";
+        return { error: true as const, message };
+      }
+
+      if (!response.ok) {
+        let message = "Failed to generate a response";
+        try {
+          const data = (await response.json()) as { message?: string };
+          if (typeof data.message === "string") message = data.message;
+        } catch {
+          // ignore
+        }
+        return { error: true as const, message };
+      }
+
+      let receivedText = "";
+      let streamFinished = false;
+
+      let queued = "";
+      let scheduled = false;
+      const flushNoPacing = () => {
+        scheduled = false;
+        if (!queued) return;
+        receivedText += queued;
+        queued = "";
+        replaceMessage(queryClient, roomId, {
+          id: assistantId,
+          text: receivedText,
+          created_at: createdAt,
+          author_id: null,
+          role: "assistant",
+          author: { name: "Assistant", image_url: null },
+          status: "pending",
+        });
+      };
+
+      const pacingTask = CHAT_PACING_ENABLED
+        ? paceAssistantReveal({
+            roomId,
+            assistantId,
+            createdAt,
+            queryClient,
+            getReceivedText: () => receivedText,
+            streamDone: () => streamFinished,
+            pacing: {
+              minDurationMs: 550,
+              baselineCharsPerSec: 260,
+              maxDurationMs: 1600,
+            },
+          })
+        : Promise.resolve();
+
+      try {
+        await readTextStream(response, (chunk) => {
+          if (CHAT_PACING_ENABLED) {
+            receivedText += chunk;
+            return;
+          }
+
+          queued += chunk;
+          if (scheduled) return;
+          scheduled = true;
+          requestAnimationFrame(flushNoPacing);
+        });
+      } catch (err) {
+        replaceMessage(queryClient, roomId, {
+          id: assistantId,
+          text: receivedText,
+          created_at: createdAt,
+          author_id: null,
+          role: "assistant",
+          author: { name: "Assistant", image_url: null },
+          status: "error",
+        });
+
+        let message =
+          err instanceof Error ? err.message : "Streaming response failed";
+        if (message === "Failed to fetch") {
+          message = "Streaming connection was interrupted";
+        }
+
+        return { error: true as const, message };
+      }
+
+      streamFinished = true;
+      if (!CHAT_PACING_ENABLED) flushNoPacing();
+      await pacingTask;
+
+      const providerError = extractStreamedProviderError(receivedText);
+      if (providerError) {
+        return { error: true as const, message: providerError };
+      }
+
+      return { error: false as const };
+    },
+    onMutate: ({ roomId, assistantId, createdAt }) => {
+      appendOptimisticMessage(queryClient, roomId, {
+        id: assistantId,
+        text: "Thinking…",
+        created_at: createdAt,
+        author_id: null,
+        role: "assistant",
+        author: { name: "Assistant", image_url: null },
+        status: "pending",
+      });
+    },
+    onSuccess: (result, variables) => {
+      if (result.error) {
+        applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "error");
+        return;
+      }
+
+      applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "success");
+
+      broadcastChatInvalidation({ roomId: variables.roomId });
+    },
+    onError: (_err, variables) => {
+      applyMessageStatus(queryClient, variables.roomId, variables.assistantId, "error");
+    },
+  });
+}

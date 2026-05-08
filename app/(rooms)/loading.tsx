@@ -1,6 +1,6 @@
 import { Skeleton } from "@shared/components/ui/skeleton";
 
-import { ChatHeader } from "@domains/chat/components/ChatHeader";
+import { ChatHeader } from "@domains/chat/room/components/ChatHeader";
 
 export default function RoomsSegmentLoading() {
   return (

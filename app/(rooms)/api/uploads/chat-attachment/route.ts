@@ -1,13 +1,13 @@
 import {
   CHAT_DOCUMENTS_MAX_BYTES,
   fileExtensionForDocument,
-} from "@domains/chat/lib/chatDocuments";
+} from "@domains/chat/attachments/lib/chatDocuments";
 import {
   CHAT_IMAGES_BUCKET,
   CHAT_IMAGES_MAX_BYTES,
   fileExtensionForMime,
-} from "@domains/chat/lib/chatImages";
-import { fetchRoom } from "@domains/chat/queries/room-fetchers";
+} from "@domains/chat/attachments/lib/chatImages";
+import { fetchRoom } from "@domains/chat/room/queries/room-fetchers";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";

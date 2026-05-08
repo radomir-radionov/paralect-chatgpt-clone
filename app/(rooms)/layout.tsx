@@ -2,13 +2,13 @@ import { dehydrate } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import { getMe } from "@domains/auth/api/getMe";
-import { getJoinedRooms } from "@domains/chat/api/getJoinedRooms";
+import { getJoinedRooms } from "@domains/chat/room/api/getJoinedRooms";
 import { getQueryClient } from "@shared/lib/query/getQueryClient";
 import { HydrateClient } from "@shared/lib/query/HydrateClient";
 
-import { chatKeys } from "@domains/chat/queries/keys";
-import { ChatLayoutShell } from "@domains/chat/components/ChatLayoutShell";
-import { ChatSidebar } from "@domains/chat/components/ChatSidebar";
+import { chatKeys } from "@domains/chat/room/queries/keys";
+import { ChatLayoutShell } from "@domains/chat/room/components/ChatLayoutShell";
+import { ChatSidebar } from "@domains/chat/room/components/ChatSidebar";
 
 export default async function RoomsLayout({
   children,
