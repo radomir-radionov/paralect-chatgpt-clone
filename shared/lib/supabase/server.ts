@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { getSupabaseAdminEnv, getSupabaseEnv } from "./env";
 import type { Database } from "./types/database";
 
-export async function createSupabaseServerClient() {
+export async function createSupabaseAuthServerClient() {
   const { supabaseUrl, supabaseAnonKey } = getSupabaseEnv();
   const cookieStore = await cookies();
 

@@ -3,8 +3,6 @@ import GoogleLoginForm from "@domains/auth/components/GoogleLoginForm";
 import { AuthPageShell } from "@domains/auth/components/AuthPageShell";
 import { Separator } from "@shared/components/ui/separator";
 
-export const dynamic = "force-static";
-
 export default function LoginPage() {
   return (
     <AuthPageShell

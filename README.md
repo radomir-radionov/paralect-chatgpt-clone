@@ -90,9 +90,9 @@ cp .env.example .env.local
 
 Fill in values in `.env.local`:
 
-- **Required (browser)**
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **Required (server)**
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
 - **Required (server/admin operations)**
   - `SUPABASE_SECRET_KEY`
 - **Required for chat (pick at least one provider)**

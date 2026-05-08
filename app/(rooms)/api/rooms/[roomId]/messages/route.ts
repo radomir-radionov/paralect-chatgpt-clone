@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
-
 import { fetchMessagesPage } from "@domains/chat/queries/message-fetchers";
 import { fetchRoom } from "@domains/chat/queries/room-fetchers";
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
 
@@ -21,10 +20,7 @@ export async function GET(
 ) {
   const user = await getCurrentUser();
   if (user == null) {
-    return NextResponse.json(
-      { error: true, message: "User not authenticated" },
-      { status: 401 },
-    );
+    return jsonError("User not authenticated", 401);
   }
 
   const { roomId } = await params;
@@ -37,19 +33,16 @@ export async function GET(
   try {
     const room = await fetchRoom(supabase, roomId, user.id);
     if (room == null) {
-      return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+      return jsonError("Chat not found", 404);
     }
 
     const items = await fetchMessagesPage(supabase, roomId, cursor, limit);
     const nextCursor =
       items.length < limit ? null : (items[items.length - 1]?.created_at ?? null);
 
-    return NextResponse.json({ error: false, items, nextCursor });
+    return jsonOk({ items, nextCursor });
   } catch (error) {
     console.error("[api/rooms/:roomId/messages]", error);
-    return NextResponse.json(
-      { error: true, message: "Internal server error" },
-      { status: 500 },
-    );
+    return jsonError("Internal server error", 500);
   }
 }

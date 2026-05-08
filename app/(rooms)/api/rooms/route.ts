@@ -1,20 +1,13 @@
-import { NextResponse } from "next/server";
-
 import { createRoomMutation } from "@domains/chat/services/roomMutations";
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
+import { readJson } from "@shared/lib/http/readJson";
 
 export const runtime = "nodejs";
 
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: true, message }, { status });
-}
-
 export async function POST(req: Request) {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body", 400);
-  }
+  const parsed = await readJson(req);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const result = await createRoomMutation(body as never);
   if (result.error) {
@@ -27,5 +20,5 @@ export async function POST(req: Request) {
     return jsonError(result.message, status);
   }
 
-  return NextResponse.json({ error: false, roomId: result.roomId });
+  return jsonOk({ roomId: result.roomId });
 }
