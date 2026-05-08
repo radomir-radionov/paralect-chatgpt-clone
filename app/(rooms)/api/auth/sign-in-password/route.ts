@@ -1,12 +1,7 @@
-import { NextResponse } from "next/server";
-
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { createSupabaseServerClient } from "@shared/lib/supabase/server";
 
 export const runtime = "nodejs";
-
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: true, message }, { status });
-}
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -37,5 +32,5 @@ export async function POST(req: Request) {
     return jsonError(error.message || "Sign-in failed", 401);
   }
 
-  return NextResponse.json({ error: false });
+  return jsonOk();
 }

@@ -1,18 +1,13 @@
-import { NextResponse } from "next/server";
-
 import { fetchRoom } from "@domains/chat/queries/room-fetchers";
 import {
   deleteRoomMutation,
   updateRoomModelMutation,
 } from "@domains/chat/services/roomMutations";
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
 
 export const runtime = "nodejs";
-
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: true, message }, { status });
-}
 
 export async function GET(
   _req: Request,
@@ -20,10 +15,7 @@ export async function GET(
 ) {
   const user = await getCurrentUser();
   if (user == null) {
-    return NextResponse.json(
-      { error: true, message: "User not authenticated" },
-      { status: 401 },
-    );
+    return jsonError("User not authenticated", 401);
   }
 
   const { roomId } = await params;
@@ -33,16 +25,13 @@ export async function GET(
     const room = await fetchRoom(supabase, roomId, user.id);
 
     if (room == null) {
-      return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+      return jsonError("Chat not found", 404);
     }
 
-    return NextResponse.json({ error: false, room });
+    return jsonOk({ room });
   } catch (error) {
     console.error("[api/rooms/:roomId GET]", error);
-    return NextResponse.json(
-      { error: true, message: "Internal server error" },
-      { status: 500 },
-    );
+    return jsonError("Internal server error", 500);
   }
 }
 
@@ -68,7 +57,10 @@ export async function PATCH(
     return jsonError("modelSlug is required", 400);
   }
 
-  const result = await updateRoomModelMutation({ roomId, modelSlug: modelSlug as never });
+  const result = await updateRoomModelMutation({
+    roomId,
+    modelSlug: modelSlug as never,
+  });
   if (result.error) {
     const status =
       result.message === "User not authenticated"
@@ -79,7 +71,7 @@ export async function PATCH(
     return jsonError(result.message ?? "Update failed", status);
   }
 
-  return NextResponse.json({ error: false });
+  return jsonOk();
 }
 
 export async function DELETE(
@@ -102,5 +94,5 @@ export async function DELETE(
     return jsonError(result.message ?? "Delete failed", status);
   }
 
-  return NextResponse.json({ error: false });
+  return jsonOk();
 }

@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
-
 import { streamAssistantText } from "@shared/lib/ai/providers";
 import { getAiModelBySlug, isAiModelSlug } from "@shared/lib/ai/model-registry";
+import { jsonError } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
 import { STREAMING_TEXT_HEADERS } from "@shared/lib/http/streamingTextHeaders";
@@ -36,10 +35,7 @@ export async function POST(
 ) {
   const user = await getCurrentUser();
   if (user == null) {
-    return NextResponse.json(
-      { error: true, message: "User not authenticated" },
-      { status: 401 },
-    );
+    return jsonError("User not authenticated", 401);
   }
 
   const { roomId } = await params;
@@ -48,24 +44,20 @@ export async function POST(
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: true, message: "Invalid JSON body" },
-      { status: 400 },
-    );
+    return jsonError("Invalid JSON body", 400);
   }
 
   const raw = body as Record<string, unknown>;
   const mode =
-    raw.mode === "assistant_only" ? ("assistant_only" as const) : ("user_and_assistant" as const);
+    raw.mode === "assistant_only"
+      ? ("assistant_only" as const)
+      : ("user_and_assistant" as const);
   const assistantMessageId = raw.assistantId;
   const incomingAttachments = raw.attachments;
   const requestedModelSlug = raw.modelSlug;
 
   if (typeof assistantMessageId !== "string") {
-    return NextResponse.json(
-      { error: true, message: "Missing assistant message id" },
-      { status: 400 },
-    );
+    return jsonError("Missing assistant message id", 400);
   }
 
   const supabase = createSupabaseAdminClient();
@@ -76,16 +68,14 @@ export async function POST(
   });
 
   if (room == null) {
-    return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+    return jsonError("Chat not found", 404);
   }
 
-  const overrideModelSlug = typeof requestedModelSlug === "string" ? requestedModelSlug : null;
+  const overrideModelSlug =
+    typeof requestedModelSlug === "string" ? requestedModelSlug : null;
   const modelSlug = overrideModelSlug ?? room.model_slug;
   if (!isAiModelSlug(modelSlug)) {
-    return NextResponse.json(
-      { error: true, message: "This chat uses an unsupported AI model" },
-      { status: 400 },
-    );
+    return jsonError("This chat uses an unsupported AI model", 400);
   }
 
   if (mode === "user_and_assistant") {
@@ -93,20 +83,15 @@ export async function POST(
     const text = raw.text;
 
     if (typeof userMessageId !== "string") {
-      return NextResponse.json(
-        { error: true, message: "Missing user message id" },
-        { status: 400 },
-      );
+      return jsonError("Missing user message id", 400);
     }
 
-    const rawAttachments =
-      Array.isArray(incomingAttachments) ? (incomingAttachments as StreamIncomingAttachment[]) : [];
+    const rawAttachments = Array.isArray(incomingAttachments)
+      ? (incomingAttachments as StreamIncomingAttachment[])
+      : [];
 
     if (typeof text !== "string") {
-      return NextResponse.json(
-        { error: true, message: "Missing message text" },
-        { status: 400 },
-      );
+      return jsonError("Missing message text", 400);
     }
 
     let attachments: StreamIncomingAttachment[];
@@ -118,24 +103,26 @@ export async function POST(
         messageId: userMessageId,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Invalid attachment metadata";
-      return NextResponse.json({ error: true, message }, { status: 400 });
+      const message =
+        error instanceof Error ? error.message : "Invalid attachment metadata";
+      return jsonError(message, 400);
     }
 
     if (!text.trim() && attachments.length === 0) {
-      return NextResponse.json(
-        { error: true, message: "Message cannot be empty" },
-        { status: 400 },
-      );
+      return jsonError("Message cannot be empty", 400);
     }
 
     let parsedDocuments: Map<string, ParsedStreamIncomingDocument>;
     try {
       await verifyStreamIncomingImageObjects({ attachments, supabase });
-      parsedDocuments = await parseStreamIncomingDocuments({ attachments, supabase });
+      parsedDocuments = await parseStreamIncomingDocuments({
+        attachments,
+        supabase,
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to parse document";
-      return NextResponse.json({ error: true, message }, { status: 400 });
+      const message =
+        error instanceof Error ? error.message : "Failed to parse document";
+      return jsonError(message, 400);
     }
 
     const userMessageRow = await insertStreamUserMessage(supabase, {
@@ -146,10 +133,7 @@ export async function POST(
     });
 
     if (userMessageRow == null) {
-      return NextResponse.json(
-        { error: true, message: "Failed to send message" },
-        { status: 500 },
-      );
+      return jsonError("Failed to send message", 500);
     }
 
     await updateChatRoomLastMessageAt(supabase, {
@@ -168,41 +152,32 @@ export async function POST(
 
       const ok = await insertStreamMessageAttachments(supabase, { rows });
       if (!ok) {
-        return NextResponse.json(
-          { error: true, message: "Failed to save message attachments" },
-          { status: 500 },
-        );
+        return jsonError("Failed to save message attachments", 500);
       }
     }
   } else {
     const userMessageId = raw.userMessageId;
     if (typeof userMessageId !== "string") {
-      return NextResponse.json(
-        { error: true, message: "Missing user message id" },
-        { status: 400 },
-      );
+      return jsonError("Missing user message id", 400);
     }
 
-    const userMessageRow = await selectStreamUserMessageForRegenerate(supabase, {
-      messageId: userMessageId,
-      chatRoomId: room.id,
-      authorId: user.id,
-    });
+    const userMessageRow = await selectStreamUserMessageForRegenerate(
+      supabase,
+      {
+        messageId: userMessageId,
+        chatRoomId: room.id,
+        authorId: user.id,
+      },
+    );
 
     if (userMessageRow == null) {
-      return NextResponse.json(
-        { error: true, message: "User message not found" },
-        { status: 404 },
-      );
+      return jsonError("User message not found", 404);
     }
   }
 
   const historyDesc = await fetchStreamMessageHistoryDesc(supabase, room.id);
   if (historyDesc == null) {
-    return NextResponse.json(
-      { error: true, message: "Failed to build the AI prompt history" },
-      { status: 500 },
-    );
+    return jsonError("Failed to build the AI prompt history", 500);
   }
 
   const history = historyDesc;
@@ -210,10 +185,7 @@ export async function POST(
 
   const attachments = await fetchStreamMessageAttachments(supabase, messageIds);
   if (attachments == null) {
-    return NextResponse.json(
-      { error: true, message: "Failed to load message attachments" },
-      { status: 500 },
-    );
+    return jsonError("Failed to load message attachments", 500);
   }
 
   const encoder = new TextEncoder();
@@ -250,11 +222,14 @@ export async function POST(
             );
           }
 
-          const assistantMessageRow = await insertStreamAssistantMessage(supabase, {
-            messageId: assistantMessageId,
-            text: assistantText,
-            chatRoomId: room.id,
-          });
+          const assistantMessageRow = await insertStreamAssistantMessage(
+            supabase,
+            {
+              messageId: assistantMessageId,
+              text: assistantText,
+              chatRoomId: room.id,
+            },
+          );
 
           if (assistantMessageRow == null) {
             throw new Error("The AI response could not be saved");
@@ -274,7 +249,8 @@ export async function POST(
               : model?.provider === "groq"
                 ? "Groq"
                 : "OpenAI";
-          const message = error instanceof Error ? error.message : "Unknown error";
+          const message =
+            error instanceof Error ? error.message : "Unknown error";
           const errorText = `[${providerName} request failed: ${message}]`;
 
           try {

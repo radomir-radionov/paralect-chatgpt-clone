@@ -4,6 +4,7 @@ import type { ModelMessage } from "ai";
 
 import { getAiModelBySlug, isAiModelSlug } from "@shared/lib/ai/model-registry";
 import { streamAssistantText } from "@shared/lib/ai/providers";
+import { jsonError } from "@shared/lib/http/nextJson";
 import {
   consumeGuestQuestion,
   GUEST_QUOTA_COOKIE_NAME,
@@ -45,10 +46,6 @@ type IncomingGuestAttachment =
 function decodeBase64ToArrayBuffer(dataBase64: string) {
   const bytes = Buffer.from(dataBase64, "base64");
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-}
-
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: true, message }, { status });
 }
 
 function normalizeGuestAttachments(value: unknown): IncomingGuestAttachment[] {

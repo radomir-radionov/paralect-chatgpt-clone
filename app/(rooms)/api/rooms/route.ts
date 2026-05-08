@@ -1,12 +1,7 @@
-import { NextResponse } from "next/server";
-
 import { createRoomMutation } from "@domains/chat/services/roomMutations";
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 
 export const runtime = "nodejs";
-
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: true, message }, { status });
-}
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -27,5 +22,5 @@ export async function POST(req: Request) {
     return jsonError(result.message, status);
   }
 
-  return NextResponse.json({ error: false, roomId: result.roomId });
+  return jsonOk({ roomId: result.roomId });
 }

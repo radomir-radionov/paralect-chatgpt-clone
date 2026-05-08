@@ -1,12 +1,7 @@
-import { NextResponse } from "next/server";
-
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { createSupabaseServerClient } from "@shared/lib/supabase/server";
 
 export const runtime = "nodejs";
-
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: true, message }, { status });
-}
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -46,9 +41,5 @@ export async function POST(req: Request) {
   const isNewRegistration = identities != null && identities.length > 0;
   const hasSession = data.session != null;
 
-  return NextResponse.json({
-    error: false,
-    isNewRegistration,
-    hasSession,
-  });
+  return jsonOk({ isNewRegistration, hasSession });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { jsonError } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
 
@@ -9,10 +10,7 @@ export async function GET(
 ) {
   const user = await getCurrentUser();
   if (user == null) {
-    return NextResponse.json(
-      { error: true, message: "User not authenticated" },
-      { status: 401 },
-    );
+    return jsonError("User not authenticated", 401);
   }
 
   const { roomId, attachmentId } = await params;
@@ -26,7 +24,7 @@ export async function GET(
     .single();
 
   if (roomError || room == null) {
-    return NextResponse.json({ error: true, message: "Chat not found" }, { status: 404 });
+    return jsonError("Chat not found", 404);
   }
 
   const { data: attachment, error: attachmentError } = await supabase
@@ -37,7 +35,7 @@ export async function GET(
     .single();
 
   if (attachmentError || attachment == null) {
-    return NextResponse.json({ error: true, message: "Attachment not found" }, { status: 404 });
+    return jsonError("Attachment not found", 404);
   }
 
   const { data } = await supabase.storage
@@ -46,10 +44,7 @@ export async function GET(
 
   const url = data?.signedUrl;
   if (!url) {
-    return NextResponse.json(
-      { error: true, message: "Failed to generate attachment URL" },
-      { status: 500 },
-    );
+    return jsonError("Failed to generate attachment URL", 500);
   }
 
   return NextResponse.redirect(url);

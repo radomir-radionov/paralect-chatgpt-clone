@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { createSupabaseServerClient } from "@shared/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -9,11 +8,8 @@ export async function POST() {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    return NextResponse.json(
-      { error: true, message: error.message || "Sign-out failed" },
-      { status: 500 },
-    );
+    return jsonError(error.message || "Sign-out failed", 500);
   }
 
-  return NextResponse.json({ error: false });
+  return jsonOk();
 }

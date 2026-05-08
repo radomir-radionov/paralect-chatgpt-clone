@@ -10,6 +10,7 @@ import {
   fileExtensionForMime,
 } from "@domains/chat/lib/chatImages";
 import { fetchRoom } from "@domains/chat/queries/room-fetchers";
+import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
 
@@ -21,10 +22,6 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
-}
-
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: true, message }, { status });
 }
 
 export async function POST(req: Request) {
@@ -116,5 +113,5 @@ export async function POST(req: Request) {
     return jsonError(error.message || "Upload failed", 500);
   }
 
-  return NextResponse.json({ error: false, storagePath });
+  return jsonOk({ storagePath });
 }
