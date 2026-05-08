@@ -1,36 +1,33 @@
+import { signInWithPasswordSchema } from "@domains/auth/schemas/auth";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
-import { createSupabaseServerClient } from "@shared/lib/supabase/server";
+import { readJson } from "@shared/lib/http/readJson";
+import { withSupabaseServerClient } from "@shared/lib/supabase/withSupabaseServerClient";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body", 400);
-  }
+  const parsed = await readJson(req);
+  if (!parsed.ok) return parsed.response;
 
-  const raw = body as Record<string, unknown>;
-  const email = raw.email;
-  const password = raw.password;
-
-  if (typeof email !== "string" || !email.trim()) {
-    return jsonError("Email is required", 400);
+  const validated = signInWithPasswordSchema.safeParse(parsed.data);
+  if (!validated.success) {
+    return jsonError(
+      validated.error.issues[0]?.message ?? "Invalid request body",
+      400,
+    );
   }
-  if (typeof password !== "string" || !password) {
-    return jsonError("Password is required", 400);
-  }
+  const { email, password } = validated.data;
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
+  return withSupabaseServerClient(async (supabase) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return jsonError(error.message || "Sign-in failed", 401);
+    }
+
+    return jsonOk();
   });
-
-  if (error) {
-    return jsonError(error.message || "Sign-in failed", 401);
-  }
-
-  return jsonOk();
 }

@@ -3,12 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { authKeys } from "@domains/auth/queries/keys";
-
-type SignUpInput = {
-  email: string;
-  password: string;
-  emailRedirectTo?: string;
-};
+import type { SignUpInput } from "@domains/auth/schemas/auth";
 
 export type SignUpResult = {
   isNewRegistration: boolean;

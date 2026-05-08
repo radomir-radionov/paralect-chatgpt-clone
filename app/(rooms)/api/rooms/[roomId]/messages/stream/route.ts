@@ -1,6 +1,7 @@
 import { streamAssistantText } from "@shared/lib/ai/providers";
 import { getAiModelBySlug, isAiModelSlug } from "@shared/lib/ai/model-registry";
 import { jsonError } from "@shared/lib/http/nextJson";
+import { readJson } from "@shared/lib/http/readJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
 import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
 import { STREAMING_TEXT_HEADERS } from "@shared/lib/http/streamingTextHeaders";
@@ -40,12 +41,9 @@ export async function POST(
 
   const { roomId } = await params;
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body", 400);
-  }
+  const parsed = await readJson(req);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const raw = body as Record<string, unknown>;
   const mode =

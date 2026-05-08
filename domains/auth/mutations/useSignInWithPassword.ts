@@ -3,17 +3,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { authKeys } from "@domains/auth/queries/keys";
-
-type SignInInput = {
-  email: string;
-  password: string;
-};
+import type { SignInWithPasswordInput } from "@domains/auth/schemas/auth";
 
 export function useSignInWithPassword() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ email, password }: SignInInput) => {
+    mutationFn: async ({ email, password }: SignInWithPasswordInput) => {
       const res = await fetch("/api/auth/sign-in-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -5,6 +5,7 @@ import type { ModelMessage } from "ai";
 import { getAiModelBySlug, isAiModelSlug } from "@shared/lib/ai/model-registry";
 import { streamAssistantText } from "@shared/lib/ai/providers";
 import { jsonError } from "@shared/lib/http/nextJson";
+import { readJson } from "@shared/lib/http/readJson";
 import {
   consumeGuestQuestion,
   GUEST_QUOTA_COOKIE_NAME,
@@ -58,11 +59,8 @@ function normalizeGuestAttachments(value: unknown): IncomingGuestAttachment[] {
       throw new Error("Invalid attachment metadata");
     }
 
-    const raw = item as Record<string, unknown>;
-    const kind = raw.kind;
-    const mimeType = raw.mimeType;
-    const sizeBytes = raw.sizeBytes;
-    const dataBase64 = raw.dataBase64;
+    const { kind, mimeType, sizeBytes, dataBase64, originalName: originalNameRaw } =
+      item as Record<string, unknown>;
 
     if ((kind !== "image" && kind !== "document") || typeof mimeType !== "string") {
       throw new Error("Invalid attachment metadata");
@@ -86,7 +84,6 @@ function normalizeGuestAttachments(value: unknown): IncomingGuestAttachment[] {
       throw new Error("One of the documents is too large (max 15MB).");
     }
 
-    const originalNameRaw = raw.originalName;
     const originalName =
       typeof originalNameRaw === "string" && originalNameRaw.trim()
         ? originalNameRaw.trim()
@@ -119,12 +116,9 @@ function normalizeGuestAttachments(value: unknown): IncomingGuestAttachment[] {
 }
 
 export async function POST(req: Request) {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body", 400);
-  }
+  const parsed = await readJson(req);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   const raw = body as Record<string, unknown>;
   const modelSlug = raw.modelSlug;
