@@ -1,10 +1,10 @@
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
-import { withSupabaseServerClient } from "@shared/lib/supabase/withSupabaseServerClient";
+import { withSupabaseAuthServerClient } from "@shared/lib/supabase/withSupabaseServerClient";
 
 export const runtime = "nodejs";
 
 export async function POST() {
-  return withSupabaseServerClient(async (supabase) => {
+  return withSupabaseAuthServerClient(async (supabase) => {
     const { error } = await supabase.auth.signOut();
 
     if (error) {

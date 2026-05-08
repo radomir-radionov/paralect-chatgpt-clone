@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-
 import {
   CHAT_DOCUMENTS_MAX_BYTES,
   fileExtensionForDocument,

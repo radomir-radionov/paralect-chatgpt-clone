@@ -1,12 +1,12 @@
-import { createSupabaseServerClient } from "./server";
+import { createSupabaseAuthServerClient } from "./server";
 
-type SupabaseServerClient = Awaited<
-  ReturnType<typeof createSupabaseServerClient>
+type SupabaseAuthServerClient = Awaited<
+  ReturnType<typeof createSupabaseAuthServerClient>
 >;
 
-export async function withSupabaseServerClient<T>(
-  fn: (supabase: SupabaseServerClient) => Promise<T>,
+export async function withSupabaseAuthServerClient<T>(
+  fn: (supabase: SupabaseAuthServerClient) => Promise<T>,
 ): Promise<T> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await createSupabaseAuthServerClient();
   return fn(supabase);
 }

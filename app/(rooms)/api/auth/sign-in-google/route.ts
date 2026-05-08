@@ -1,7 +1,7 @@
 import { signInWithGoogleSchema } from "@domains/auth/schemas/auth";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { readJson } from "@shared/lib/http/readJson";
-import { withSupabaseServerClient } from "@shared/lib/supabase/withSupabaseServerClient";
+import { withSupabaseAuthServerClient } from "@shared/lib/supabase/withSupabaseServerClient";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   }
   const { redirectTo } = validated.data;
 
-  return withSupabaseServerClient(async (supabase) => {
+  return withSupabaseAuthServerClient(async (supabase) => {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {

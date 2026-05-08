@@ -38,8 +38,7 @@ export default function EmailPasswordForm({
   const emailId = useId();
   const passwordId = useId();
   const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [credentials, setCredentials] = useState({ email: "", password: "" });
   const [status, setStatus] = useState("");
 
   const signUp = useSignUp();
@@ -47,6 +46,8 @@ export default function EmailPasswordForm({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const { email, password } = credentials;
 
     if (mode === "signup") {
       try {
@@ -142,8 +143,13 @@ export default function EmailPasswordForm({
                   <Input
                     id={emailId}
                     type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    value={credentials.email}
+                    onChange={(event) =>
+                      setCredentials((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
                     required
                     autoComplete="email"
                     placeholder="you@email.com"
@@ -156,8 +162,13 @@ export default function EmailPasswordForm({
                   <Input
                     id={passwordId}
                     type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    value={credentials.password}
+                    onChange={(event) =>
+                      setCredentials((current) => ({
+                        ...current,
+                        password: event.target.value,
+                      }))
+                    }
                     required
                     minLength={6}
                     autoComplete={
