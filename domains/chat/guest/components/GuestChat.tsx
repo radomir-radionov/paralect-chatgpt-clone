@@ -156,6 +156,7 @@ export function GuestChat() {
       <ChatComposerInput
         disabled={isSending || hasReachedLimit}
         isSending={isSending}
+        withOuterPadding={false}
         innerClassName="mx-auto max-w-[800px]"
         placeholder={
           hasReachedLimit ? "Sign in to ask more" : "Ask anything…"
