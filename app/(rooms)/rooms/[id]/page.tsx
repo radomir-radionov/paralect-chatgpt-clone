@@ -4,7 +4,7 @@ import { dehydrate } from "@tanstack/react-query";
 import { getMe } from "@domains/auth/api/getMe";
 import { getMyProfile } from "@domains/auth/api/getMyProfile";
 import { authKeys } from "@domains/auth/queries/keys";
-import { getMessagesPage } from "@domains/chat/room/api/getMessagesPage";
+import { fetchRoomMessagesPageDirect } from "@domains/chat/room/api/getMessagesPage";
 import { getRoom } from "@domains/chat/room/api/getRoom";
 import { RoomClient } from "@domains/chat/room/components/RoomClient";
 import { chatKeys } from "@domains/chat/room/queries/keys";
@@ -13,7 +13,6 @@ import {
   MESSAGES_INITIAL_PAGE_SIZE,
   MESSAGES_PAGE_SIZE,
 } from "@domains/chat/room/queries/message-pagination";
-import { getRequestOrigin } from "@shared/lib/http/getRequestOrigin";
 import { getQueryClient } from "@shared/lib/query/getQueryClient";
 import { HydrateClient } from "@shared/lib/query/HydrateClient";
 
@@ -25,14 +24,12 @@ export default async function RoomPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const origin = await getRequestOrigin();
-  const user = await getMe({ origin });
+  const user = await getMe();
   if (user == null) return notFound();
 
-  const profile = await getMyProfile({ origin });
-  if (profile == null) return notFound();
+  const [profile, room] = await Promise.all([getMyProfile(), getRoom(id)]);
 
-  const room = await getRoom(id, { origin });
+  if (profile == null) return notFound();
 
   const queryClient = getQueryClient();
   queryClient.setQueryData(authKeys.profile(user.id), profile);
@@ -47,14 +44,13 @@ export default async function RoomPage({
       await queryClient.prefetchInfiniteQuery({
         queryKey: chatKeys.messages(id),
         queryFn: async ({ pageParam }) => {
-          const limit = pageParam == null ? MESSAGES_INITIAL_PAGE_SIZE : MESSAGES_PAGE_SIZE;
-          const { items } = await getMessagesPage({
+          const limit =
+            pageParam == null ? MESSAGES_INITIAL_PAGE_SIZE : MESSAGES_PAGE_SIZE;
+          return fetchRoomMessagesPageDirect({
             roomId: id,
             cursor: pageParam,
             limit,
-            origin,
           });
-          return items;
         },
         initialPageParam: null as string | null,
         getNextPageParam: getNextPageParamForMessages,
