@@ -16,7 +16,7 @@ export type Database = {
         Row: {
           created_at: string;
           id: string;
-          last_message_at: string;
+          last_message_at: string | null;
           model_slug: string;
           name: string;
           owner_id: string;
@@ -24,7 +24,7 @@ export type Database = {
         Insert: {
           created_at?: string;
           id?: string;
-          last_message_at?: string;
+          last_message_at?: string | null;
           model_slug?: string;
           name: string;
           owner_id: string;
@@ -32,7 +32,7 @@ export type Database = {
         Update: {
           created_at?: string;
           id?: string;
-          last_message_at?: string;
+          last_message_at?: string | null;
           model_slug?: string;
           name?: string;
           owner_id?: string;

@@ -164,10 +164,18 @@ export async function fetchStreamMessageAttachments(
       "id, message_id, kind, storage_bucket, storage_path, mime_type, original_name, extracted_text, extracted_chars",
     )
     .in("message_id", messageIds)
+    .order("message_id", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) return null;
-  return (data ?? []) as PersistedAttachmentRow[];
+  // If downstream logic expects a single global created_at ordering, preserve it here
+  // while allowing the DB to use the (message_id, created_at) index for retrieval.
+  return ((data ?? []) as PersistedAttachmentRow[]).slice().sort((a, b) => {
+    if (a.message_id !== b.message_id) {
+      return a.message_id < b.message_id ? -1 : 1;
+    }
+    return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+  });
 }
 
 export async function insertStreamAssistantMessage(
