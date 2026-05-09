@@ -50,6 +50,7 @@ type Props = {
   isSending?: boolean;
   placeholder?: string;
   footerText?: string;
+  withOuterPadding?: boolean;
   /** Constrain composer width; signed-in rooms and guest chat use `max-w-[800px]` so the bar aligns with the centered column. */
   innerClassName?: string;
   onSubmit: (payload: ComposerSubmitPayload) => Promise<void> | void;
@@ -60,6 +61,7 @@ export function ChatComposerInput({
   isSending = false,
   placeholder = "Ask anything…",
   footerText = "Enter to send · Shift+Enter for new line · Paste image or attach files",
+  withOuterPadding = true,
   innerClassName,
   onSubmit,
 }: Props) {
@@ -127,7 +129,8 @@ export function ChatComposerInput({
     <form onSubmit={handleSubmit} className="shrink-0">
       <div
         className={cn(
-          "w-full p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+          "w-full pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+          withOuterPadding && "p-4",
           innerClassName,
         )}
       >
