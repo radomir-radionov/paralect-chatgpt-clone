@@ -26,18 +26,15 @@ export default async function RoomsLayout({
     );
   }
 
+  const rooms = await getJoinedRooms(user.id);
   const queryClient = getQueryClient();
-
-  await queryClient.prefetchQuery({
-    queryKey: chatKeys.joinedRooms(user.id),
-    queryFn: () => getJoinedRooms(),
-  });
+  queryClient.setQueryData(chatKeys.joinedRooms(user.id), rooms);
 
   return (
     <ChatLayoutShell
       sidebar={
         <HydrateClient state={dehydrate(queryClient)}>
-          <ChatSidebar userId={user.id} />
+          <ChatSidebar userId={user.id} initialRooms={rooms} />
         </HydrateClient>
       }
     >

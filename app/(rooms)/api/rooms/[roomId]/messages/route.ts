@@ -2,7 +2,7 @@ import { fetchMessagesPage } from "@domains/chat/room/queries/message-fetchers";
 import { fetchRoom } from "@domains/chat/room/queries/room-fetchers";
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
-import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
+import { getSupabaseAdminClient } from "@shared/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -34,7 +34,7 @@ export async function GET(
   const cursor = url.searchParams.get("cursor");
   const limit = parseLimit(url.searchParams.get("limit"));
 
-  const supabase = createSupabaseAdminClient();
+  const supabase = getSupabaseAdminClient();
 
   try {
     const room = await fetchRoom(supabase, roomId, user.id);

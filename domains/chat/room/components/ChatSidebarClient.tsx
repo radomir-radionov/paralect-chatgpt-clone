@@ -121,6 +121,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
               <div key={room.id} className="group relative cursor-pointer">
                 <Link
                   href={`/rooms/${room.id}`}
+                  prefetch
                   className={cn(
                     "block min-w-0 rounded-md px-3 py-2 pr-8 text-sm transition-colors duration-200",
                     "cursor-pointer",
