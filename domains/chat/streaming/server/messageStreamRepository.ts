@@ -161,7 +161,7 @@ export async function fetchStreamMessageAttachments(
   const { data, error } = await supabase
     .from("message_attachment")
     .select(
-      "id, message_id, kind, storage_bucket, storage_path, mime_type, original_name, extracted_text, extracted_chars",
+      "id, message_id, created_at, kind, storage_bucket, storage_path, mime_type, original_name, extracted_text, extracted_chars",
     )
     .in("message_id", messageIds)
     .order("message_id", { ascending: true })
