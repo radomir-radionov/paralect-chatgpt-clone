@@ -35,7 +35,7 @@ export const messagesInfiniteQueryOptions = (roomId: string) =>
     enabled: Boolean(roomId),
     refetchOnWindowFocus: false,
     retryOnMount: false,
-    staleTime: 5_000,
+    staleTime: 30_000,
     retry: chatFetchRetry,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
   });

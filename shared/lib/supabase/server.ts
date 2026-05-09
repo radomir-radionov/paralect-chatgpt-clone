@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { getSupabaseAdminEnv, getSupabaseEnv } from "./env";
 import type { Database } from "./types/database";
@@ -44,3 +45,6 @@ export function createSupabaseAdminClient() {
     },
   );
 }
+
+/** One admin client per React server request (dedupes parallel RSC / route work). */
+export const getSupabaseAdminClient = cache(createSupabaseAdminClient);

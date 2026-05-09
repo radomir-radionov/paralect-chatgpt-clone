@@ -26,7 +26,7 @@ export default async function RoomsLayout({
     );
   }
 
-  const rooms = await getJoinedRooms();
+  const rooms = await getJoinedRooms(user.id);
   const queryClient = getQueryClient();
   queryClient.setQueryData(chatKeys.joinedRooms(user.id), rooms);
 

@@ -5,7 +5,7 @@ import { fetchMessagesPage } from "@domains/chat/room/queries/message-fetchers";
 import { fetchRoom } from "@domains/chat/room/queries/room-fetchers";
 import { ApiError } from "@shared/lib/http/ApiError";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
-import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
+import { getSupabaseAdminClient } from "@shared/lib/supabase/server";
 
 function buildNextCursor(items: { created_at: string; id: string }[]): string | null {
   const last = items[items.length - 1];
@@ -22,7 +22,7 @@ export async function fetchRoomMessagesPageDirect(options: {
   readonly cursor: string | null;
   readonly limit: number;
 }): Promise<MessagesPage> {
-  const supabase = createSupabaseAdminClient();
+  const supabase = getSupabaseAdminClient();
   return fetchMessagesPage(
     supabase,
     options.roomId,
@@ -41,7 +41,7 @@ export async function getMessagesPage(options: {
     throw new ApiError("User not authenticated", 401);
   }
 
-  const supabase = createSupabaseAdminClient();
+  const supabase = getSupabaseAdminClient();
   const room = await fetchRoom(supabase, options.roomId, user.id);
   if (room == null) {
     throw new ApiError("Chat not found", 404);

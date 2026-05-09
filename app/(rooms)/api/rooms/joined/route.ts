@@ -1,6 +1,6 @@
 import { jsonError, jsonOk } from "@shared/lib/http/nextJson";
 import { getCurrentUser } from "@shared/lib/supabase/getCurrentUser";
-import { createSupabaseAdminClient } from "@shared/lib/supabase/server";
+import { getSupabaseAdminClient } from "@shared/lib/supabase/server";
 import { fetchJoinedRooms } from "@domains/chat/room/queries/room-fetchers";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET() {
     return jsonError("User not authenticated", 401);
   }
 
-  const supabase = createSupabaseAdminClient();
+  const supabase = getSupabaseAdminClient();
 
   try {
     const rooms = await fetchJoinedRooms(supabase, user.id);
