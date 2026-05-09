@@ -14,6 +14,12 @@ function parseLimit(raw: string | null): number {
   return Math.min(50, Math.max(1, asInt));
 }
 
+function buildNextCursor(items: { created_at: string; id: string }[]): string | null {
+  const last = items[items.length - 1];
+  if (last == null) return null;
+  return `${last.created_at}|${last.id}`;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ roomId: string }> },
@@ -38,7 +44,7 @@ export async function GET(
 
     const items = await fetchMessagesPage(supabase, roomId, cursor, limit);
     const nextCursor =
-      items.length < limit ? null : (items[items.length - 1]?.created_at ?? null);
+      items.length < limit ? null : buildNextCursor(items);
 
     return jsonOk({ items, nextCursor });
   } catch (error) {

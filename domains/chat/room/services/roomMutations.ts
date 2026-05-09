@@ -85,6 +85,7 @@ export async function createRoomMutation(
       name: data.name,
       owner_id: user.id,
       model_slug: data.modelSlug,
+      last_message_at: null,
     })
     .select("id")
     .single();
@@ -137,7 +138,48 @@ export async function deleteRoomMutation(
     return { error: true, message: "Failed to delete chat" };
   }
 
+  // Best-effort storage cleanup; do not block the delete result.
+  void deleteRoomStorageObjects({ supabase, ownerId: user.id, roomId: room.id });
+
   return { error: false };
+}
+
+async function deleteRoomStorageObjects(options: {
+  readonly supabase: ReturnType<typeof createSupabaseAdminClient>;
+  readonly ownerId: string;
+  readonly roomId: string;
+}): Promise<void> {
+  const bucket = "chat-attachments";
+  const prefix = `${options.ownerId}/${options.roomId}`;
+
+  try {
+    // Supabase Storage lists are paginated; remove in batches.
+    let offset = 0;
+    const limit = 1000;
+
+    for (;;) {
+      const { data, error } = await options.supabase.storage.from(bucket).list(prefix, {
+        limit,
+        offset,
+      });
+
+      if (error != null) return;
+
+      const names = (data ?? [])
+        .map((item) => item.name)
+        .filter((name) => typeof name === "string" && name.length > 0);
+
+      if (names.length === 0) return;
+
+      const paths = names.map((name) => `${prefix}/${name}`);
+      await options.supabase.storage.from(bucket).remove(paths);
+
+      if (names.length < limit) return;
+      offset += limit;
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export async function updateRoomModelMutation(

@@ -13,5 +13,7 @@ export function getNextPageParamForMessages(
   const expected =
     lastPageParam == null ? MESSAGES_INITIAL_PAGE_SIZE : MESSAGES_PAGE_SIZE;
   if (lastPage.length < expected) return undefined;
-  return lastPage[lastPage.length - 1]?.created_at ?? undefined;
+  const last = lastPage[lastPage.length - 1];
+  if (last == null) return undefined;
+  return `${last.created_at}|${last.id}`;
 }

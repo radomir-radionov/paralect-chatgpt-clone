@@ -44,6 +44,8 @@ Open `http://localhost:3000`.
 
 - If `npm run db:push` fails, try disabling VPN/Tailscale or apply migrations in **Supabase Dashboard → SQL Editor**.
 - If you see `PGRST106 Invalid schema: app_private`, add `app_private` in **Project Settings → Data API → Exposed schemas**.
+- Chat message pagination uses a **stable composite cursor** (`created_at|id`) under `GET /api/rooms/:roomId/messages` to avoid duplicates/skips when timestamps collide.
+- Deleting a chat room performs **best-effort Storage cleanup** for `chat-attachments` objects under `{ownerId}/{roomId}/` (does not block the delete response).
 
 ## Scripts
 

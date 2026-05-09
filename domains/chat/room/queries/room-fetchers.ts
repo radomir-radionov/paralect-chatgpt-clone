@@ -8,7 +8,7 @@ export type RoomListItem = {
   id: string;
   name: string;
   modelSlug: string;
-  lastMessageAt: string;
+  lastMessageAt: string | null;
 };
 
 export type RoomDetails = {

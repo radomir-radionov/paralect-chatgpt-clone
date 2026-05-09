@@ -7,6 +7,7 @@ export type PersistedHistoryRow = {
 export type PersistedAttachmentRow = {
   id: string;
   message_id: string;
+  created_at: string;
   kind: "image" | "document";
   storage_bucket: string;
   storage_path: string;
