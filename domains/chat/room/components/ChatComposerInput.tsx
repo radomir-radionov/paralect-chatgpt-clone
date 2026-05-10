@@ -131,6 +131,7 @@ export function ChatComposerInput({
         className={cn(
           "w-full pb-[max(0.75rem,env(safe-area-inset-bottom))]",
           withOuterPadding && "p-4",
+          !withOuterPadding && "px-3 sm:px-4",
           innerClassName,
         )}
       >
