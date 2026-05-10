@@ -1,6 +1,7 @@
 "use client";
 
 import type { Ref } from "react";
+import { memo } from "react";
 import { FileTextIcon, ImageOffIcon } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -23,7 +24,7 @@ type Props = Message & {
   ref?: Ref<HTMLDivElement>;
 };
 
-export function ChatMessage({
+export const ChatMessage = memo(function ChatMessage({
   text,
   roomId,
   author,
@@ -242,4 +243,4 @@ export function ChatMessage({
       </div>
     </div>
   );
-}
+});

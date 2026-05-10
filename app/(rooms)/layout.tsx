@@ -6,6 +6,7 @@ import { getJoinedRooms } from "@domains/chat/room/api/getJoinedRooms";
 import { getQueryClient } from "@shared/lib/query/getQueryClient";
 import { HydrateClient } from "@shared/lib/query/HydrateClient";
 
+import { authKeys } from "@domains/auth/queries/keys";
 import { chatKeys } from "@domains/chat/room/queries/keys";
 import { ChatLayoutShell } from "@domains/chat/room/components/ChatLayoutShell";
 import { ChatSidebar } from "@domains/chat/room/components/ChatSidebar";
@@ -28,17 +29,16 @@ export default async function RoomsLayout({
 
   const rooms = await getJoinedRooms(user.id);
   const queryClient = getQueryClient();
+  queryClient.setQueryData(authKeys.currentUser, user);
   queryClient.setQueryData(chatKeys.joinedRooms(user.id), rooms);
 
   return (
-    <ChatLayoutShell
-      sidebar={
-        <HydrateClient state={dehydrate(queryClient)}>
-          <ChatSidebar userId={user.id} initialRooms={rooms} />
-        </HydrateClient>
-      }
-    >
-      {children}
-    </ChatLayoutShell>
+    <HydrateClient state={dehydrate(queryClient)}>
+      <ChatLayoutShell
+        sidebar={<ChatSidebar userId={user.id} initialRooms={rooms} />}
+      >
+        {children}
+      </ChatLayoutShell>
+    </HydrateClient>
   );
 }
