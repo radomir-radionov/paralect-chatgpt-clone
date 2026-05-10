@@ -13,6 +13,9 @@ export const profileQueryOptions = (userId: string) =>
     queryKey: authKeys.profile(userId),
     queryFn: () => clientGetProfile(),
     enabled: Boolean(userId),
+    refetchOnWindowFocus: false,
+    retryOnMount: false,
+    staleTime: 30_000,
   });
 
 export function useProfile(userId: string) {

@@ -11,6 +11,7 @@ type Options = {
 };
 
 export function useChatScroll(
+  roomId: string,
   messageCount: number,
   {
     bottomThresholdPx = 80,
@@ -25,7 +26,19 @@ export function useChatScroll(
   const prevScrollHeightRef = useRef(0);
   const wasFetchingOlderRef = useRef(false);
 
+  const prevRoomIdRef = useRef(roomId);
+
   const [showScrollButton, setShowScrollButton] = useState(false);
+
+  useEffect(() => {
+    if (prevRoomIdRef.current === roomId) return;
+    prevRoomIdRef.current = roomId;
+    prevMessageCountRef.current = 0;
+    isAtBottomRef.current = true;
+    setShowScrollButton(false);
+    prevScrollHeightRef.current = 0;
+    wasFetchingOlderRef.current = false;
+  }, [roomId]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });

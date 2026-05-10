@@ -2,38 +2,21 @@
 
 import { useState } from "react";
 
-import { Skeleton } from "@shared/components/ui/skeleton";
 import {
   DEFAULT_AI_MODEL_SLUG,
   type AiModelSlug,
 } from "@shared/lib/ai/model-registry";
 
-import { useCurrentUser } from "@domains/auth/queries/useCurrentUser";
 import { AiModelSelect } from "@domains/chat/room/components/AiModelSelect";
 import { ChatComposerInput } from "@domains/chat/room/components/ChatComposerInput";
 import { ChatHeader } from "@domains/chat/room/components/ChatHeader";
 import { useNewRoomSubmit } from "@domains/chat/room/hooks/useNewRoomSubmit";
 
 export function NewRoomComposer() {
-  const { user, isLoading: sessionLoading } = useCurrentUser();
-  const [modelSlug, setModelSlug] = useState<AiModelSlug>(DEFAULT_AI_MODEL_SLUG);
+  const [modelSlug, setModelSlug] = useState<AiModelSlug>(
+    DEFAULT_AI_MODEL_SLUG,
+  );
   const { isSubmitting, onSubmit } = useNewRoomSubmit({ modelSlug });
-
-  if (sessionLoading && user == null) {
-    return (
-      <div className="flex h-full flex-col" aria-busy="true" role="status">
-        <span className="sr-only">Loading…</span>
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
-          <Skeleton className="h-6 w-32" />
-          <Skeleton className="h-9 w-[min(220px,60vw)]" />
-        </div>
-        <div className="flex flex-1 flex-col justify-end gap-4 px-4 py-8 sm:justify-center">
-          <Skeleton className="h-8 w-[min(100%,20rem)]" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col">

@@ -51,22 +51,33 @@ export function useDeleteRoom(userId: string) {
         return;
       }
 
+      const deletedRoomId = variables.roomId;
+
       await queryClient.cancelQueries({
-        queryKey: chatKeys.room(variables.roomId),
+        queryKey: chatKeys.room(deletedRoomId),
       });
       await queryClient.cancelQueries({
-        queryKey: chatKeys.messages(variables.roomId),
-      });
-      queryClient.removeQueries({ queryKey: chatKeys.room(variables.roomId) });
-      queryClient.removeQueries({
-        queryKey: chatKeys.messages(variables.roomId),
+        queryKey: chatKeys.messages(deletedRoomId),
       });
 
-      await queryClient.invalidateQueries({
-        queryKey: chatKeys.joinedRooms(userId),
-      });
+      // Only drop caches while no observers. Removing an actively observed room
+      // query would make useRoom refetch the deleted id immediately.
+      const removeInactiveRoomCaches = () => {
+        queryClient.removeQueries({
+          queryKey: chatKeys.room(deletedRoomId),
+          type: "inactive",
+        });
+        queryClient.removeQueries({
+          queryKey: chatKeys.messages(deletedRoomId),
+          type: "inactive",
+        });
+      };
 
-      broadcastChatInvalidation({ roomId: variables.roomId });
+      removeInactiveRoomCaches();
+      queueMicrotask(removeInactiveRoomCaches);
+      setTimeout(removeInactiveRoomCaches, 0);
+
+      broadcastChatInvalidation({ roomId: deletedRoomId });
     },
   });
 }

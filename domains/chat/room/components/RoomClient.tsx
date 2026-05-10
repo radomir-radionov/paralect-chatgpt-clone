@@ -127,7 +127,7 @@ export function RoomClient({
     scrollToBottom,
     startPreserveScrollOnOlderLoad,
     finishPreserveScrollOnOlderLoad,
-  } = useChatScroll(messages.length);
+  } = useChatScroll(roomId, messages.length);
 
   useEffect(() => {
     if (isFetchingNextPage) {
@@ -171,9 +171,33 @@ export function RoomClient({
   const profile = profileQuery.data ?? null;
 
   const roomOrProfileError = roomQuery.isError || profileQuery.isError;
+  const roomNotFound = roomQuery.isSuccess && roomQuery.data === null;
   const roomOrProfileLoading =
     (roomQuery.isPending && room == null) ||
     (profileQuery.isPending && profile == null);
+
+  const messagesInitialLoading =
+    status === "pending" && messages.length === 0 && error == null;
+  const showMessagesEmpty =
+    status === "success" && messages.length === 0 && error == null;
+
+  const shouldRenderThinkingPlaceholder =
+    roomSendStreamInFlight > 0 &&
+    !messages.some((m) => m.role === "assistant" && m.status === "pending");
+
+  const messageList = useMemo(
+    () =>
+      messages.map((message, index) => (
+        <ChatMessage
+          key={message.id}
+          roomId={roomId}
+          {...message}
+          isOwn={message.author_id === userId}
+          isGrouped={isGrouped(message, messages[index - 1])}
+        />
+      )),
+    [messages, roomId, userId],
+  );
 
   if (roomOrProfileError) {
     return (
@@ -208,6 +232,19 @@ export function RoomClient({
     );
   }
 
+  if (roomNotFound) {
+    return (
+      <div className="flex h-full min-h-[40vh] flex-col items-center justify-center gap-4 p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          This chat does not exist or was deleted.
+        </p>
+        <Button type="button" variant="outline" size="sm" asChild>
+          <Link href="/">Back home</Link>
+        </Button>
+      </div>
+    );
+  }
+
   if (roomOrProfileLoading || room == null || profile == null) {
     return (
       <div className="flex h-full flex-col">
@@ -216,15 +253,6 @@ export function RoomClient({
       </div>
     );
   }
-
-  const messagesInitialLoading =
-    status === "pending" && messages.length === 0 && error == null;
-  const showMessagesEmpty =
-    status === "success" && messages.length === 0 && error == null;
-
-  const shouldRenderThinkingPlaceholder =
-    roomSendStreamInFlight > 0 &&
-    !messages.some((m) => m.role === "assistant" && m.status === "pending");
 
   return (
     <div className="flex h-full flex-col">
@@ -281,15 +309,7 @@ export function RoomClient({
               </Empty>
             ) : null}
 
-            {messages.map((message, index) => (
-              <ChatMessage
-                key={message.id}
-                roomId={roomId}
-                {...message}
-                isOwn={message.author_id === userId}
-                isGrouped={isGrouped(message, messages[index - 1])}
-              />
-            ))}
+            {messageList}
 
             {shouldRenderThinkingPlaceholder ? (
               <ChatMessage

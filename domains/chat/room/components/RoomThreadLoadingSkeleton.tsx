@@ -2,7 +2,7 @@ import { Skeleton } from "@shared/components/ui/skeleton";
 
 import { ChatHeader } from "@domains/chat/room/components/ChatHeader";
 
-export default function RoomsSegmentLoading() {
+export function RoomThreadLoadingSkeleton() {
   return (
     <div className="flex h-full min-h-[50vh] flex-col">
       <ChatHeader right={<Skeleton className="h-9 w-[min(220px,55vw)]" />} />

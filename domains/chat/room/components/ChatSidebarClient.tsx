@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
-import { useEffect, useOptimistic } from "react";
+import { useParams } from "next/navigation";
 import { LogOutIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
-import { toast } from "sonner";
 
 import { ActionButton } from "@shared/components/ui/action-button";
 import { Button } from "@shared/components/ui/button";
@@ -20,9 +18,10 @@ import { cn } from "@shared/lib/utils";
 
 import { SignOutButton } from "@domains/auth/components/SignOutButton";
 import { useRoomsNavOptional } from "@domains/chat/room/context/RoomsNavContext";
-import { useDeleteRoom } from "@domains/chat/room/mutations/useDeleteRoom";
+import { useChatSidebarRooms } from "@domains/chat/room/hooks/useChatSidebarRooms";
+import { useCloseMobileSidebarOnRouteChange } from "@domains/chat/room/hooks/useCloseMobileSidebarOnRouteChange";
+import { useRoomNavPrefetch } from "@domains/chat/room/hooks/useRoomNavPrefetch";
 import type { RoomListItem } from "@domains/chat/room/queries/useRooms";
-import { useJoinedRooms } from "@domains/chat/room/queries/useRooms";
 
 type Props = {
   userId: string;
@@ -30,28 +29,24 @@ type Props = {
 };
 
 export function ChatSidebarClient({ userId, initialRooms }: Props) {
-  const router = useRouter();
-  const pathname = usePathname();
   const params = useParams();
   const roomsNav = useRoomsNavOptional();
   const closeMobileSidebar = roomsNav?.closeMobileSidebar;
   const activeRoomId = typeof params?.id === "string" ? params.id : undefined;
 
-  useEffect(() => {
-    closeMobileSidebar?.();
-  }, [pathname, closeMobileSidebar]);
+  useCloseMobileSidebarOnRouteChange(closeMobileSidebar);
 
-  const roomsQuery = useJoinedRooms(userId);
-  const baseRooms = roomsQuery.data ?? initialRooms;
-  const [optimisticRooms, applyOptimisticDelete] = useOptimistic(
-    baseRooms,
-    (current: RoomListItem[], roomId: string) =>
-      current.filter((r) => r.id !== roomId),
-  );
-  const showRoomsPlaceholder =
-    roomsQuery.isPending && roomsQuery.data === undefined;
+  const {
+    optimisticRooms,
+    showRoomsPlaceholder,
+    deleteRoomMutation,
+    deleteRoom,
+  } = useChatSidebarRooms({ userId, initialRooms, activeRoomId });
 
-  const deleteRoomMutation = useDeleteRoom(userId);
+  const { navRef, scheduleRoomPrefetch } = useRoomNavPrefetch({
+    activeRoomId,
+    rooms: optimisticRooms,
+  });
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -78,7 +73,10 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
         ) : null}
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+      <nav
+        ref={navRef}
+        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2"
+      >
         <Link
           href="/"
           aria-label="New chat"
@@ -117,11 +115,20 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
           </Empty>
         ) : (
           optimisticRooms.map((room) => {
+            const roomHref = `/rooms/${room.id}`;
+
             return (
-              <div key={room.id} className="group relative cursor-pointer">
+              <div
+                key={room.id}
+                className="group relative cursor-pointer"
+                data-prefetch-room={room.id}
+              >
                 <Link
-                  href={`/rooms/${room.id}`}
-                  prefetch
+                  href={roomHref}
+                  prefetch={activeRoomId !== room.id}
+                  onFocus={() => {
+                    scheduleRoomPrefetch(room.id);
+                  }}
                   className={cn(
                     "block min-w-0 rounded-md px-3 py-2 pr-8 text-sm transition-colors duration-200",
                     "cursor-pointer",
@@ -153,38 +160,7 @@ export function ChatSidebarClient({ userId, initialRooms }: Props) {
                     deleteRoomMutation.isPending &&
                     deleteRoomMutation.variables?.roomId === room.id
                   }
-                  action={async () => {
-                    if (
-                      deleteRoomMutation.isPending &&
-                      deleteRoomMutation.variables?.roomId !== room.id
-                    ) {
-                      return {
-                        error: true,
-                        message: "Another chat is being deleted.",
-                      };
-                    }
-
-                    applyOptimisticDelete(room.id);
-
-                    if (activeRoomId === room.id) {
-                      router.replace("/");
-                    }
-
-                    try {
-                      const result = await deleteRoomMutation.mutateAsync({
-                        roomId: room.id,
-                      });
-                      if (result.error) return result;
-
-                      toast.success("Chat deleted");
-                      return { error: false };
-                    } catch {
-                      return {
-                        error: true,
-                        message: "Could not delete chat.",
-                      };
-                    }
-                  }}
+                  action={() => deleteRoom(room.id)}
                 >
                   <Trash2Icon className="size-4" />
                 </ActionButton>

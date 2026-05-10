@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { dehydrate } from "@tanstack/react-query";
 
-import { getMe } from "@domains/auth/api/getMe";
 import { getMyProfile } from "@domains/auth/api/getMyProfile";
 import { authKeys } from "@domains/auth/queries/keys";
 import { fetchRoomMessagesPageDirect } from "@domains/chat/room/api/getMessagesPage";
@@ -24,15 +23,12 @@ export default async function RoomPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await getMe();
-  if (user == null) return notFound();
-
   const [profile, room] = await Promise.all([getMyProfile(), getRoom(id)]);
 
   if (profile == null) return notFound();
 
   const queryClient = getQueryClient();
-  queryClient.setQueryData(authKeys.profile(user.id), profile);
+  queryClient.setQueryData(authKeys.profile(profile.id), profile);
 
   if (room != null) {
     queryClient.setQueryData(chatKeys.room(id), room);
@@ -60,7 +56,7 @@ export default async function RoomPage({
 
   return (
     <HydrateClient state={dehydrate(queryClient)}>
-      <RoomClient key={id} roomId={id} userId={user.id} />
+      <RoomClient roomId={id} userId={profile.id} />
     </HydrateClient>
   );
 }
